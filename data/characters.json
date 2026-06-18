@@ -45,7 +45,8 @@
     "color": "#855624",
     "size": 42,
     "abilities": {
-      "determination": true
+      "determination": true,
+      "determination_rush": true
     },
     "assetFolder": "Dino"
   }

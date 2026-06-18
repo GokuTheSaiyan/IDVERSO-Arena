@@ -1,42 +1,27 @@
 // ============================================================
 //  SPRITE MANAGER
-//  Attempts to load character sprites. Falls back to shapes.
 // ============================================================
 class SpriteManager {
-  constructor() {
-    this.cache = {};
-  }
-
+  constructor() { this.cache = {}; }
   loadSprite(url) {
     return new Promise((resolve) => {
       const img = new Image();
-      img.onload = () => {
-        this.cache[url] = img;
-        resolve(img);
-      };
-      img.onerror = () => {
-        this.cache[url] = null;
-        resolve(null);
-      };
+      img.onload = () => { this.cache[url] = img; resolve(img); };
+      img.onerror = () => { this.cache[url] = null; resolve(null); };
       img.src = url;
     });
   }
-
   async getSprite(charFolder, name) {
     if (!charFolder) return null;
     const url = `sprites/${charFolder}/${name}.png`;
-    if (this.cache[url] === undefined) {
-      await this.loadSprite(url);
-    }
+    if (this.cache[url] === undefined) await this.loadSprite(url);
     return this.cache[url];
   }
 }
-
 const Sprites = new SpriteManager();
 
 // ============================================================
 //  CLASS: Fighter
-//  Created from roster data. Fully generic.
 // ============================================================
 class Fighter {
   constructor(character, x, y, angle) {
@@ -48,8 +33,7 @@ class Fighter {
     this.damage    = character.damage;
     this.baseSpeed = character.speed;
 
-    this.x = x;
-    this.y = y;
+    this.x = x; this.y = y;
     this.radius = character.size || 36;
     this.vx = Math.cos(angle) * this.baseSpeed;
     this.vy = Math.sin(angle) * this.baseSpeed;
@@ -63,24 +47,40 @@ class Fighter {
     this.attackAngle = 0;
     this.speedBoost  = 0;
 
-    // Determination System
+    // Determination
     this.determination = 0;
     this.shieldActive = false;
     this.detCooldown = 0;
+    this.detChoicePending = false;
 
-    // HATE System
+    // Rush
+    this.rushState = 'idle';
+    this.rushChargesLeft = 0;
+    this.rushChargeTime = 0;
+    this.rushMaxChargeTime = 5.0;
+    this.rushTimer = 0;
+    this.rushMaxTimer = 1.5;
+    this.rushAngle = 0;
+    this.rushDirectionLocked = false;
+    this.rushCooldownTimer = 0;
+    this.rushInvulnerable = false;
+    this.rushStunTimer = 0;
+    this.afterimages = [];
+    this.chargeFlashTimer = 0;
+    this.chargeFlashValue = 0;
+    this.shakeIntensity = 0;
+
+    // HATE
     this.hate = 0;
     this.hateMaxed = false;
+    this.hateUnlocked = false;
     this.hateSlashCooldown = 0;
-    
-    // HATE Slash Windup State
     this.hateWindupTime = 0;
     this.hateSlashTarget = null;
     this.hateSlashAmount = 0;
     this.storedVx = 0;
     this.storedVy = 0;
 
-    // Load Sprite if available
     this.sprite = null;
     if (character.assetFolder) {
       Sprites.getSprite(character.assetFolder, 'idle').then(s => this.sprite = s);
@@ -92,84 +92,73 @@ class Fighter {
     this.attackAngle = Math.atan2(targetY - this.y, targetX - this.x);
   }
 
+  startRushCharge(game) {
+    this.rushState = this.rushChargesLeft === 2 ? 'charging_rush_1' : 'charging_rush_2';
+    this.rushChargeTime = this.rushMaxChargeTime;
+    this.rushDirectionLocked = false;
+    this.storedVx = this.vx;
+    this.storedVy = this.vy;
+    this.vx = 0; this.vy = 0;
+    const target = this === game.fighterA ? game.fighterB : game.fighterA;
+    this.rushAngle = Math.atan2(target.y - this.y, target.x - this.x);
+    game.log(`${this.name} began charging Rush Attack #${3 - this.rushChargesLeft}.`);
+    Sound.rushCharge();
+  }
+
+  launchRush(game) {
+    this.rushState = this.rushChargesLeft === 2 ? 'rushing_1' : 'rushing_2';
+    this.rushTimer = this.rushMaxTimer;
+    this.rushInvulnerable = true;
+    const rushSpeed = 1200;
+    this.vx = Math.cos(this.rushAngle) * rushSpeed;
+    this.vy = Math.sin(this.rushAngle) * rushSpeed;
+    this.shakeIntensity = 0;
+    this.chargeFlashValue = 0;
+    Sound.rushLaunch();
+    game.log(`${this.name} launched Rush Attack #${3 - this.rushChargesLeft}.`);
+  }
+
+  endRush(game, hitOpponent) {
+    this.rushInvulnerable = false;
+    this.rushState = 'idle';
+    this.rushChargesLeft--;
+    const len = Math.hypot(this.vx, this.vy);
+    if (len > 0) { this.vx = (this.vx / len) * this.baseSpeed; this.vy = (this.vy / len) * this.baseSpeed; }
+    if (this.rushChargesLeft > 0) {
+      this.startRushCharge(game);
+    } else {
+      this.rushCooldownTimer = 8.0;
+      game.log(`${this.name}'s Determination entered cooldown.`);
+    }
+  }
+
+  applyWallStun(game) {
+    this.rushInvulnerable = false;
+    this.rushState = 'idle';
+    this.rushChargesLeft = 0;
+    this.vx = 0; this.vy = 0;
+    this.rushStunTimer = 3.0;
+    this.rushCooldownTimer = 8.0;
+    game.log(`${this.name} crashed into a wall and became stunned.`);
+    Sound.rushCrash();
+    Sound.rushStun();
+  }
+
   update(dt, arena, game) {
     if (!this.alive) return;
 
-    // HATE Slash Windup Pause
-    if (this.hateWindupTime > 0) {
-      this.hateWindupTime -= dt;
-      if (this.hateWindupTime <= 0) {
-        this.hateWindupTime = 0;
-        // Fire projectile using target's current position
-        if (this.hateSlashTarget) {
-          game.spawnHateSlash(this, this.hateSlashTarget, this.hateSlashAmount);
-          // Deduct HATE after firing
-          this.hate -= this.hateSlashAmount;
-          if (this.hate < 100) this.hateMaxed = false;
-        }
-        // Restore velocity
-        this.vx = this.storedVx;
-        this.vy = this.storedVy;
-      }
-      
-      // Still update visual timers
+    if (this.rushStunTimer > 0) {
+      this.rushStunTimer -= dt;
       if (this.flashTime > 0) this.flashTime -= dt;
-      if (this.attackTime > 0) this.attackTime -= dt;
-      return; // Skip normal movement
+      return;
     }
 
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
+    if (this.rushCooldownTimer > 0) this.rushCooldownTimer -= dt;
 
-    // Wall bounce
-    if (this.x - this.radius < arena.x) {
-      this.x = arena.x + this.radius;
-      this.vx = Math.abs(this.vx);
-      this.vy += (Math.random() - 0.5) * 70;
-    }
-    if (this.x + this.radius > arena.x + arena.size) {
-      this.x = arena.x + arena.size - this.radius;
-      this.vx = -Math.abs(this.vx);
-      this.vy += (Math.random() - 0.5) * 70;
-    }
-    if (this.y - this.radius < arena.y) {
-      this.y = arena.y + this.radius;
-      this.vy = Math.abs(this.vy);
-      this.vx += (Math.random() - 0.5) * 70;
-    }
-    if (this.y + this.radius > arena.y + arena.size) {
-      this.y = arena.y + arena.size - this.radius;
-      this.vy = -Math.abs(this.vy);
-      this.vx += (Math.random() - 0.5) * 70;
-    }
-
-    // Maintain speed with minimum threshold
-    const m = Math.hypot(this.vx, this.vy);
-    if (m > 0.001) {
-      let currentSpeed = this.baseSpeed + this.speedBoost;
-      
-      // HATE Speed Bonus
-      if (this.character.abilities && this.character.abilities.hate) {
-        currentSpeed += (this.hate / 100) * 50; // Up to +50 speed
-      }
-      
-      this.vx = (this.vx / m) * currentSpeed;
-      this.vy = (this.vy / m) * currentSpeed;
-    } else {
-      const angle = Math.random() * Math.PI * 2;
-      this.vx = Math.cos(angle) * this.baseSpeed;
-      this.vy = Math.sin(angle) * this.baseSpeed;
-    }
-
-    if (this.speedBoost > 0) {
-      this.speedBoost -= dt * 250;
-      if (this.speedBoost < 0) this.speedBoost = 0;
-    }
-
-    // Determination System Logic
+    // Determination
     if (this.character.abilities && this.character.abilities.determination && this.alive) {
-      if (this.detCooldown > 0) {
-        this.detCooldown -= dt;
+      if (this.rushCooldownTimer > 0) {
+        // No gen during cooldown
       } else if (this.shieldActive) {
         this.determination -= dt * 22;
         if (this.determination <= 0) {
@@ -179,39 +168,163 @@ class Fighter {
           game.log(`${this.name}'s Determination Shield expired`);
           Sound.shieldOff(this.character.assetFolder);
         }
-      } else {
+      } else if (this.rushState === 'idle' && this.determination < 100) {
         this.determination += dt * 3;
         if (this.determination >= 100) {
           this.determination = 100;
+          this.detChoicePending = true;
+        }
+      }
+
+      if (this.detChoicePending) {
+        this.detChoicePending = false;
+        if (Math.random() < 0.5) {
           this.shieldActive = true;
-          game.log(`${this.name} reached full Determination`);
-          game.log(`${this.name} activated Determination Shield`);
+          game.log(`${this.name} selected Determination Shield.`);
+          game.log(`${this.name} activated Determination Shield.`);
           Sound.detFull(this.character.assetFolder);
           Sound.shieldOn(this.character.assetFolder);
+        } else {
+          this.rushChargesLeft = 2;
+          this.determination = 0;
+          game.log(`${this.name} selected Determination Rush.`);
+          game.log(`${this.name} consumed 100% Determination.`);
+          this.startRushCharge(game);
         }
       }
     }
 
-    // HATE System Passive Activation (No collision required)
+    // Rush Charging
+    if (this.rushState.startsWith('charging')) {
+      this.rushChargeTime -= dt;
+      this.chargeFlashTimer += dt;
+
+      const progress = 1 - (this.rushChargeTime / this.rushMaxChargeTime);
+
+      // Lock direction at 40% progress (3s mark in 5s charge)
+      if (progress >= 0.4 && !this.rushDirectionLocked) {
+        this.rushDirectionLocked = true;
+        game.log(`${this.name}'s Rush direction locked.`);
+        Sound.rushLock();
+      }
+
+      if (!this.rushDirectionLocked) {
+        const target = this === game.fighterA ? game.fighterB : game.fighterA;
+        if (target.alive) {
+          this.rushAngle = Math.atan2(target.y - this.y, target.x - this.x);
+        }
+      }
+
+      // Flashing: starts slow (1/sec), ends very fast (12/sec)
+      const flashSpeed = 1 + Math.pow(progress, 2) * 11;
+      this.chargeFlashValue = (Math.sin(this.chargeFlashTimer * flashSpeed * Math.PI * 2) + 1) / 2;
+
+      // Shake in final 2 seconds
+      if (this.rushChargeTime < 2.0) {
+        this.shakeIntensity = (2.0 - this.rushChargeTime) / 2.0 * 6;
+      } else {
+        this.shakeIntensity = 0;
+      }
+
+      if (this.rushChargeTime <= 0) {
+        this.launchRush(game);
+      }
+      if (this.flashTime > 0) this.flashTime -= dt;
+      return;
+    }
+
+    // Rushing
+    if (this.rushState.startsWith('rushing')) {
+      this.rushTimer -= dt;
+
+      this.afterimages.push({ x: this.x, y: this.y, life: 0.2 });
+      if (this.afterimages.length > 10) this.afterimages.shift();
+      this.afterimages.forEach(a => a.life -= dt);
+      this.afterimages = this.afterimages.filter(a => a.life > 0);
+
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+
+      let hitWall = false;
+      if (this.x - this.radius < arena.x) { this.x = arena.x + this.radius; this.vx = Math.abs(this.vx) * 0.95; hitWall = true; }
+      if (this.x + this.radius > arena.x + arena.size) { this.x = arena.x + arena.size - this.radius; this.vx = -Math.abs(this.vx) * 0.95; hitWall = true; }
+      if (this.y - this.radius < arena.y) { this.y = arena.y + this.radius; this.vy = Math.abs(this.vy) * 0.95; hitWall = true; }
+      if (this.y + this.radius > arena.y + arena.size) { this.y = arena.y + arena.size - this.radius; this.vy = -Math.abs(this.vy) * 0.95; hitWall = true; }
+
+      // Rush #2 wall stun
+      if (hitWall && this.rushState === 'rushing_2') {
+        this.applyWallStun(game);
+        return;
+      }
+
+      if (this.rushTimer <= 0) {
+        this.endRush(game, false);
+      }
+      if (this.flashTime > 0) this.flashTime -= dt;
+      return;
+    }
+
+    // HATE Slash Windup
+    if (this.hateWindupTime > 0) {
+      this.hateWindupTime -= dt;
+      if (this.hateWindupTime <= 0) {
+        this.hateWindupTime = 0;
+        if (this.hateSlashTarget) {
+          game.spawnHateSlash(this, this.hateSlashTarget, this.hateSlashAmount);
+          this.hate -= this.hateSlashAmount;
+          if (this.hate < 0) this.hate = 0;
+        }
+        this.vx = this.storedVx;
+        this.vy = this.storedVy;
+      }
+      if (this.flashTime > 0) this.flashTime -= dt;
+      if (this.attackTime > 0) this.attackTime -= dt;
+      return;
+    }
+
+    // Normal Movement
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    if (this.x - this.radius < arena.x) { this.x = arena.x + this.radius; this.vx = Math.abs(this.vx); this.vy += (Math.random()-0.5)*70; }
+    if (this.x + this.radius > arena.x + arena.size) { this.x = arena.x + arena.size - this.radius; this.vx = -Math.abs(this.vx); this.vy += (Math.random()-0.5)*70; }
+    if (this.y - this.radius < arena.y) { this.y = arena.y + this.radius; this.vy = Math.abs(this.vy); this.vx += (Math.random()-0.5)*70; }
+    if (this.y + this.radius > arena.y + arena.size) { this.y = arena.y + arena.size - this.radius; this.vy = -Math.abs(this.vy); this.vx += (Math.random()-0.5)*70; }
+
+    const m = Math.hypot(this.vx, this.vy);
+    if (m > 0.001) {
+      let currentSpeed = this.baseSpeed + this.speedBoost;
+      if (this.character.abilities && this.character.abilities.hate) {
+        currentSpeed += (this.hate / 100) * 50;
+      }
+      this.vx = (this.vx / m) * currentSpeed;
+      this.vy = (this.vy / m) * currentSpeed;
+    } else {
+      const angle = Math.random() * Math.PI * 2;
+      this.vx = Math.cos(angle) * this.baseSpeed;
+      this.vy = Math.sin(angle) * this.baseSpeed;
+    }
+
+    if (this.speedBoost > 0) { this.speedBoost -= dt * 250; if (this.speedBoost < 0) this.speedBoost = 0; }
+
+    // HATE System
     if (this.character.abilities && this.character.abilities.hate && this.alive) {
       if (this.hateSlashCooldown > 0) {
         this.hateSlashCooldown -= dt;
-      } else if (this.hate >= 100) {
-        // ~50% chance per second to activate when off cooldown
+      } else if (this.hateUnlocked && this.hate >= 25) {
         if (Math.random() < 0.5 * dt) {
-          // Decide how much HATE to use
           const choices = [25, 50, 75, 100];
-          this.hateSlashAmount = choices[Math.floor(Math.random() * choices.length)];
-          
+          let validChoices = choices.filter(c => c <= this.hate);
+          if (validChoices.length === 0) validChoices = [this.hate];
+          this.hateSlashAmount = validChoices[Math.floor(Math.random() * validChoices.length)];
           const target = this === game.fighterA ? game.fighterB : game.fighterA;
           if (target.alive) {
             this.hateSlashTarget = target;
-            this.hateWindupTime = 0.3; // Brief pause to animate
+            this.hateWindupTime = 0.3;
             this.storedVx = this.vx;
             this.storedVy = this.vy;
-            this.vx = 0;
-            this.vy = 0;
-            this.triggerAttack(target.x, target.y); // Trigger knife animation
+            this.vx = 0; this.vy = 0;
+            this.triggerAttack(target.x, target.y);
             Sound.hateSlashPrep();
             game.log(`${this.name} prepared a HATE Slash.`);
             game.log(`${this.name} decided to use ${this.hateSlashAmount}% HATE.`);
@@ -227,41 +340,44 @@ class Fighter {
 
   takeDamage(amount, attacker, game) {
     if (!this.alive) return false;
-    
+
+    if (this.rushInvulnerable) {
+      game.log(`${this.name} is invulnerable during Rush!`);
+      return false;
+    }
+
     if (this.character.abilities && this.character.abilities.determination && this.shieldActive) {
       game.log(`${this.name} blocked an attack with Determination Shield`);
       return false;
     }
-    
+
     this.hp = Math.max(0, this.hp - amount);
     this.flashTime = 0.15;
-    
+
     // Determination gain from damage
-    if (this.character.abilities && this.character.abilities.determination && this.detCooldown <= 0) {
+    if (this.character.abilities && this.character.abilities.determination && this.rushCooldownTimer <= 0 && this.rushState === 'idle' && !this.shieldActive) {
       this.determination += amount * 3;
       if (this.determination >= 100) {
         this.determination = 100;
-        this.shieldActive = true;
-        game.log(`${this.name} reached full Determination`);
-        game.log(`${this.name} activated Determination Shield`);
-        Sound.detFull(this.character.assetFolder);
-        Sound.shieldOn(this.character.assetFolder);
+        this.detChoicePending = true;
       }
     }
 
     // HATE gain from damage
     if (this.character.abilities && this.character.abilities.hate) {
-      this.hate += amount * 1.5; // Moderate gain
+      this.hate += amount * 1.5;
       if (this.hate > 100) this.hate = 100;
       Sound.hateGain();
-      
       if (this.hate >= 100 && !this.hateMaxed) {
         this.hateMaxed = true;
+        this.hateUnlocked = true;
         Sound.hateFull();
+        Sound.hateUnlock();
         game.log(`${this.name}'s HATE reached maximum.`);
+        game.log(`${this.name} awakened HATE Slashes.`);
       }
     }
-    
+
     if (this.hp <= 0) this.alive = false;
     return true;
   }
@@ -277,62 +393,109 @@ class Fighter {
       return;
     }
 
-    // Body: Draw Sprite if loaded, otherwise draw shape
+    let drawX = this.x;
+    let drawY = this.y;
+
+    // Shake during charge
+    if (this.rushState.startsWith('charging') && this.shakeIntensity > 0) {
+      drawX += (Math.random() - 0.5) * this.shakeIntensity;
+      drawY += (Math.random() - 0.5) * this.shakeIntensity;
+    }
+
+    // Stun shake
+    if (this.rushStunTimer > 0) {
+      drawX += (Math.random() - 0.5) * 3;
+      drawY += (Math.random() - 0.5) * 3;
+    }
+
+    // Afterimages
+    if (this.rushState.startsWith('rushing') && this.afterimages.length > 0) {
+      this.afterimages.forEach(a => {
+        const alpha = a.life / 0.2;
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Body
     if (this.sprite) {
-      ctx.drawImage(this.sprite, this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+      ctx.drawImage(this.sprite, drawX - this.radius, drawY - this.radius, this.radius * 2, this.radius * 2);
     } else {
       ctx.fillStyle = this.flashTime > 0 ? '#ffffff' : this.color;
       ctx.beginPath();
-      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.arc(drawX, drawY, this.radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 2;
       ctx.stroke();
-
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.beginPath();
-      ctx.arc(this.x, this.y, this.radius * 0.4, 0, Math.PI * 2);
+      ctx.arc(drawX, drawY, this.radius * 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Determination Shield Visual
+    // Red flashing during charge
+    if (this.rushState.startsWith('charging')) {
+      ctx.globalAlpha = this.chargeFlashValue * 0.6;
+      ctx.fillStyle = '#ff0000';
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Directional shield
+      ctx.strokeStyle = '#ff0000';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, this.radius + 12, this.rushAngle - 0.7, this.rushAngle + 0.7);
+      ctx.stroke();
+    }
+
+    // Stun visual
+    if (this.rushStunTimer > 0) {
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, this.radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Determination Shield
     if (this.shieldActive) {
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.arc(this.x, this.y, this.radius + 8, 0, Math.PI * 2);
+      ctx.arc(drawX, drawY, this.radius + 8, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // Knife + slash animation
+    // Knife animation
     if (this.character.abilities && this.character.abilities.knife && this.attackTime > 0) {
       const angle = this.attackAngle;
       ctx.save();
-      ctx.translate(this.x, this.y);
+      ctx.translate(drawX, drawY);
       ctx.rotate(angle);
-
       const progress = 1 - (this.attackTime / 0.3);
       const swing = Math.sin(progress * Math.PI);
       const swingAngle = -0.8 + progress * 1.6;
-
       ctx.strokeStyle = `rgba(255, 255, 255, ${swing * 0.8})`;
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.arc(0, 0, this.radius + 16, -0.8, 0.8);
       ctx.stroke();
-
       ctx.rotate(swingAngle);
-
       ctx.fillStyle = '#4a3010';
       ctx.fillRect(this.radius - 2, -3, 8, 6);
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(this.radius - 2, -3, 8, 6);
-
       ctx.fillStyle = '#888888';
       ctx.fillRect(this.radius + 5, -5, 3, 10);
       ctx.strokeRect(this.radius + 5, -5, 3, 10);
-
       ctx.fillStyle = '#e0e0e0';
       ctx.beginPath();
       ctx.moveTo(this.radius + 8, -4);
@@ -341,7 +504,6 @@ class Fighter {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-
       ctx.restore();
     }
   }
@@ -351,17 +513,14 @@ class Fighter {
     const w = 64, h = 6;
     const x = this.x - w / 2;
     const y = this.y - this.radius - 22;
-
     ctx.fillStyle = '#000000';
     ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-
     const pct = this.hp / this.maxHp;
     let hpColor = '#44dd44';
     if (pct <= 0.25) hpColor = '#dd4444';
     else if (pct <= 0.5) hpColor = '#ddaa44';
     ctx.fillStyle = hpColor;
     ctx.fillRect(x, y, Math.max(0, w * pct), h);
-
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'center';
