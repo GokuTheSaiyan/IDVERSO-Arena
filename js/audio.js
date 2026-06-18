@@ -231,6 +231,55 @@ class AudioManager {
     });
   }
 
+  voidFull(charFolder) {
+    this.play('void_full', charFolder, () => {
+      this.playTone(300, 0.4, 'sine', 0.15);
+      setTimeout(() => this.playTone(400, 0.6, 'sine', 0.12), 150);
+    });
+  }
+  portalOpen(charFolder) {
+    this.play('portal_open', charFolder, () => {
+      this.playTone(200, 0.6, 'sawtooth', 0.12);
+      setTimeout(() => this.playTone(100, 0.8, 'sawtooth', 0.15), 100);
+    });
+  }
+  portalClose(charFolder) {
+    this.play('portal_close', charFolder, () => {
+      this.playTone(100, 0.4, 'sawtooth', 0.12);
+      setTimeout(() => this.playTone(50, 0.5, 'sawtooth', 0.1), 100);
+    });
+  }
+  scoutSpawn(charFolder) {
+    this.play('scout_spawn', charFolder, () => this.playTone(800, 0.1, 'square', 0.1));
+  }
+  heavySpawn(charFolder) {
+    this.play('heavy_spawn', charFolder, () => this.playTone(150, 0.2, 'square', 0.15));
+  }
+  scoutAbsorb(charFolder) {
+    this.play('scout_absorb', charFolder, () => this.playTone(600, 0.2, 'sine', 0.15));
+  }
+  heavyAbsorb(charFolder) {
+    this.play('heavy_absorb', charFolder, () => this.playTone(400, 0.3, 'sine', 0.15));
+  }
+  heal(charFolder) {
+    this.play('heal', charFolder, () => {
+      this.playTone(523, 0.1, 'sine', 0.15);
+      setTimeout(() => this.playTone(659, 0.2, 'sine', 0.15), 100);
+    });
+  }
+  scoutParry(charFolder) {
+    this.play('scout_parry', charFolder, () => this.playTone(900, 0.06, 'sine', 0.12));
+  }
+  heavyParry(charFolder) {
+    this.play('heavy_parry', charFolder, () => this.playTone(700, 0.1, 'sine', 0.15));
+  }
+  parryHeal(charFolder) {
+    this.play('parry_heal', charFolder, () => {
+      this.playTone(660, 0.15, 'sine', 0.15);
+      setTimeout(() => this.playTone(880, 0.2, 'sine', 0.15), 100);
+    });
+  }
+
   countdown() { this.playTone(440, 0.15); }
   fight() { this.playTone(660, 0.1); setTimeout(() => this.playTone(880, 0.3), 100); }
 }

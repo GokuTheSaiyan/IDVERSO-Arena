@@ -99,3 +99,86 @@ class HateSlash {
     ctx.restore();
   }
 }
+
+// ============================================================
+//  CLASS: Summon
+// ============================================================
+class Summon {
+  constructor(x, y, type, owner, target) {
+    this.x = x; this.y = y;
+    this.type = type;
+    this.owner = owner;
+    this.target = target;
+    this.color = '#080212';
+    if (type === 'scout') {
+      this.radius = 18;
+      this.speed = 275;
+      this.damage = 2;
+      this.hp = 1; // Defeated in 1 hit
+      this.maxHp = 1;
+    } else {
+      this.radius = 36;
+      this.speed = 200;
+      this.damage = 3;
+      this.hp = 2; // Defeated in 2 hits
+      this.maxHp = 2;
+    }
+    this.alive = true;
+    this.flashTime = 0;
+    const angle = Math.random() * Math.PI * 2;
+    this.vx = Math.cos(angle) * this.speed;
+    this.vy = Math.sin(angle) * this.speed;
+  }
+
+  update(dt, arena) {
+    if (!this.alive) return;
+
+    if (this.target && this.target.alive) {
+      const dx = this.target.x - this.x;
+      const dy = this.target.y - this.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0.1) {
+        const steerForce = 150;
+        this.vx += (dx / dist) * steerForce * dt;
+        this.vy += (dy / dist) * steerForce * dt;
+      }
+    }
+
+    const m = Math.hypot(this.vx, this.vy);
+    if (m > 0.001) {
+      this.vx = (this.vx / m) * this.speed;
+      this.vy = (this.vy / m) * this.speed;
+    } else {
+      const angle = Math.random() * Math.PI * 2;
+      this.vx = Math.cos(angle) * this.speed;
+      this.vy = Math.sin(angle) * this.speed;
+    }
+
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    if (this.x - this.radius < arena.x) { this.x = arena.x + this.radius; this.vx = Math.abs(this.vx); }
+    if (this.x + this.radius > arena.x + arena.size) { this.x = arena.x + arena.size - this.radius; this.vx = -Math.abs(this.vx); }
+    if (this.y - this.radius < arena.y) { this.y = arena.y + this.radius; this.vy = Math.abs(this.vy); }
+    if (this.y + this.radius > arena.y + arena.size) { this.y = arena.y + arena.size - this.radius; this.vy = -Math.abs(this.vy); }
+
+    if (this.flashTime > 0) this.flashTime -= dt;
+  }
+
+  takeDamage(amount) {
+    this.hp -= amount;
+    this.flashTime = 0.15;
+    if (this.hp <= 0) this.alive = false;
+  }
+
+  draw(ctx) {
+    if (!this.alive) return;
+    ctx.fillStyle = this.flashTime > 0 ? '#ffffff' : this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4b0082';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}

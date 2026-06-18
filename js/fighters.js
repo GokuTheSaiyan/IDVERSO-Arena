@@ -65,6 +65,7 @@ class Fighter {
     this.rushCooldownTimer = 0;
     this.rushInvulnerable = false;
     this.rushStunTimer = 0;
+    this.rushTarget = null;
     this.afterimages = [];
     this.chargeFlashTimer = 0;
     this.chargeFlashValue = 0;
@@ -80,6 +81,15 @@ class Fighter {
     this.hateSlashAmount = 0;
     this.storedVx = 0;
     this.storedVy = 0;
+
+    // Void Meter & Portal
+    this.voidMeter = 0;
+    this.lastVoidMilestone = 0;
+    this.voidPortalActive = false;
+    this.voidPortalTriggered = false;
+    this.voidExhausted = false; // New exhaustion state
+    this.portalX = 0;
+    this.portalY = 0;
 
     this.sprite = null;
     if (character.assetFolder) {
@@ -99,8 +109,19 @@ class Fighter {
     this.storedVx = this.vx;
     this.storedVy = this.vy;
     this.vx = 0; this.vy = 0;
-    const target = this === game.fighterA ? game.fighterB : game.fighterA;
-    this.rushAngle = Math.atan2(target.y - this.y, target.x - this.x);
+    
+    const fighterTarget = this === game.fighterA ? game.fighterB : game.fighterA;
+    let actualTarget = fighterTarget;
+    // Special Targeting During Portal State
+    if (fighterTarget.voidPortalActive) {
+      const validSummons = game.summons.filter(s => s.alive);
+      if (validSummons.length > 0) {
+        actualTarget = validSummons[Math.floor(Math.random() * validSummons.length)];
+      }
+    }
+    this.rushTarget = actualTarget;
+    this.rushAngle = Math.atan2(actualTarget.y - this.y, actualTarget.x - this.x);
+    
     game.log(`${this.name} began charging Rush Attack #${3 - this.rushChargesLeft}.`);
     Sound.rushCharge();
   }
@@ -155,6 +176,71 @@ class Fighter {
 
     if (this.rushCooldownTimer > 0) this.rushCooldownTimer -= dt;
 
+    // Void Meter Generation
+    if (this.character.abilities && this.character.abilities.void_meter && this.alive) {
+      // Permanent Exhaustion Check
+      if (!this.voidExhausted && this.voidMeter < 100) {
+        this.voidMeter += dt * 1.25;
+        if (this.voidMeter > 100) this.voidMeter = 100;
+
+        const currentMilestone = Math.floor(this.voidMeter / 25) * 25;
+        if (currentMilestone > this.lastVoidMilestone && currentMilestone > 0) {
+          this.lastVoidMilestone = currentMilestone;
+          if (currentMilestone === 100) {
+            game.log(`${this.name}'s Void Meter reached maximum.`);
+            Sound.voidFull(this.character.assetFolder);
+          } else {
+            game.log(`${this.name}'s Void Meter reached ${currentMilestone}%.`);
+          }
+        }
+      }
+
+      // Void Portal Activation
+      if (this.hp <= 30 && this.voidMeter >= 100 && !this.voidPortalTriggered && !this.voidExhausted) {
+        this.voidPortalTriggered = true;
+        this.voidPortalActive = true;
+        this.storedVx = this.vx;
+        this.storedVy = this.vy;
+        this.vx = 0; this.vy = 0;
+        
+        // Nearest wall calculation and exact center placement
+        const cx = this.x;
+        const cy = this.y;
+        const distLeft = cx - arena.x;
+        const distRight = (arena.x + arena.size) - cx;
+        const distTop = cy - arena.y;
+        const distBottom = (arena.y + arena.size) - cy;
+        const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+        
+        // Offset to keep the 35x70 oval fully visible and unclipped
+        if (minDist === distLeft) { this.portalX = arena.x + 35; this.portalY = arena.y + arena.size / 2; }
+        else if (minDist === distRight) { this.portalX = arena.x + arena.size - 35; this.portalY = arena.y + arena.size / 2; }
+        else if (minDist === distTop) { this.portalX = arena.x + arena.size / 2; this.portalY = arena.y + 70; }
+        else { this.portalX = arena.x + arena.size / 2; this.portalY = arena.y + arena.size - 70; }
+
+        game.log(`${this.name} activated Void Portal.`);
+        Sound.portalOpen(this.character.assetFolder);
+        game.log(`Void Portal opened on the nearest wall.`);
+      }
+
+      if (this.voidPortalActive) {
+        this.voidMeter -= dt * 4; // Reduced drain rate
+        if (this.voidMeter <= 0) {
+          this.voidMeter = 0;
+          this.voidPortalActive = false;
+          this.voidExhausted = true; // Lock meter permanently
+          this.vx = this.storedVx;
+          this.vy = this.storedVy;
+          game.log(`Void Meter depleted.`);
+          game.log(`Void Portal closed.`);
+          Sound.portalClose(this.character.assetFolder);
+          game.log(`${this.name} returned to battle.`);
+        }
+        if (this.flashTime > 0) this.flashTime -= dt;
+        return; // Skip normal movement
+      }
+    }
+
     // Determination
     if (this.character.abilities && this.character.abilities.determination && this.alive) {
       if (this.rushCooldownTimer > 0) {
@@ -201,7 +287,6 @@ class Fighter {
 
       const progress = 1 - (this.rushChargeTime / this.rushMaxChargeTime);
 
-      // Lock direction at 40% progress (3s mark in 5s charge)
       if (progress >= 0.4 && !this.rushDirectionLocked) {
         this.rushDirectionLocked = true;
         game.log(`${this.name}'s Rush direction locked.`);
@@ -209,17 +294,18 @@ class Fighter {
       }
 
       if (!this.rushDirectionLocked) {
-        const target = this === game.fighterA ? game.fighterB : game.fighterA;
-        if (target.alive) {
-          this.rushAngle = Math.atan2(target.y - this.y, target.x - this.x);
+        let trackTarget = this.rushTarget;
+        if (!trackTarget || !trackTarget.alive) {
+          trackTarget = this === game.fighterA ? game.fighterB : game.fighterA;
+        }
+        if (trackTarget.alive) {
+          this.rushAngle = Math.atan2(trackTarget.y - this.y, trackTarget.x - this.x);
         }
       }
 
-      // Flashing: starts slow (1/sec), ends very fast (12/sec)
       const flashSpeed = 1 + Math.pow(progress, 2) * 11;
       this.chargeFlashValue = (Math.sin(this.chargeFlashTimer * flashSpeed * Math.PI * 2) + 1) / 2;
 
-      // Shake in final 2 seconds
       if (this.rushChargeTime < 2.0) {
         this.shakeIntensity = (2.0 - this.rushChargeTime) / 2.0 * 6;
       } else {
@@ -251,7 +337,6 @@ class Fighter {
       if (this.y - this.radius < arena.y) { this.y = arena.y + this.radius; this.vy = Math.abs(this.vy) * 0.95; hitWall = true; }
       if (this.y + this.radius > arena.y + arena.size) { this.y = arena.y + arena.size - this.radius; this.vy = -Math.abs(this.vy) * 0.95; hitWall = true; }
 
-      // Rush #2 wall stun
       if (hitWall && this.rushState === 'rushing_2') {
         this.applyWallStun(game);
         return;
@@ -317,14 +402,25 @@ class Fighter {
           let validChoices = choices.filter(c => c <= this.hate);
           if (validChoices.length === 0) validChoices = [this.hate];
           this.hateSlashAmount = validChoices[Math.floor(Math.random() * validChoices.length)];
-          const target = this === game.fighterA ? game.fighterB : game.fighterA;
-          if (target.alive) {
-            this.hateSlashTarget = target;
+          
+          const fighterTarget = this === game.fighterA ? game.fighterB : game.fighterA;
+          let actualTarget = fighterTarget;
+          // Special Targeting During Portal State
+          if (fighterTarget.voidPortalActive) {
+            const validSummons = game.summons.filter(s => s.alive);
+            if (validSummons.length > 0) {
+              actualTarget = validSummons[Math.floor(Math.random() * validSummons.length)];
+              game.log(`${this.name}'s HATE Slash targeted a ${actualTarget.type}.`);
+            }
+          }
+          
+          if (actualTarget.alive) {
+            this.hateSlashTarget = actualTarget;
             this.hateWindupTime = 0.3;
             this.storedVx = this.vx;
             this.storedVy = this.vy;
             this.vx = 0; this.vy = 0;
-            this.triggerAttack(target.x, target.y);
+            this.triggerAttack(actualTarget.x, actualTarget.y);
             Sound.hateSlashPrep();
             game.log(`${this.name} prepared a HATE Slash.`);
             game.log(`${this.name} decided to use ${this.hateSlashAmount}% HATE.`);
@@ -341,6 +437,11 @@ class Fighter {
   takeDamage(amount, attacker, game) {
     if (!this.alive) return false;
 
+    if (this.voidPortalActive) {
+      game.log(`${this.name} is invulnerable during Void Portal!`);
+      return false;
+    }
+
     if (this.rushInvulnerable) {
       game.log(`${this.name} is invulnerable during Rush!`);
       return false;
@@ -354,7 +455,6 @@ class Fighter {
     this.hp = Math.max(0, this.hp - amount);
     this.flashTime = 0.15;
 
-    // Determination gain from damage
     if (this.character.abilities && this.character.abilities.determination && this.rushCooldownTimer <= 0 && this.rushState === 'idle' && !this.shieldActive) {
       this.determination += amount * 3;
       if (this.determination >= 100) {
@@ -363,7 +463,6 @@ class Fighter {
       }
     }
 
-    // HATE gain from damage
     if (this.character.abilities && this.character.abilities.hate) {
       this.hate += amount * 1.5;
       if (this.hate > 100) this.hate = 100;
@@ -396,19 +495,16 @@ class Fighter {
     let drawX = this.x;
     let drawY = this.y;
 
-    // Shake during charge
     if (this.rushState.startsWith('charging') && this.shakeIntensity > 0) {
       drawX += (Math.random() - 0.5) * this.shakeIntensity;
       drawY += (Math.random() - 0.5) * this.shakeIntensity;
     }
 
-    // Stun shake
     if (this.rushStunTimer > 0) {
       drawX += (Math.random() - 0.5) * 3;
       drawY += (Math.random() - 0.5) * 3;
     }
 
-    // Afterimages
     if (this.rushState.startsWith('rushing') && this.afterimages.length > 0) {
       this.afterimages.forEach(a => {
         const alpha = a.life / 0.2;
@@ -421,7 +517,6 @@ class Fighter {
       ctx.globalAlpha = 1;
     }
 
-    // Body
     if (this.sprite) {
       ctx.drawImage(this.sprite, drawX - this.radius, drawY - this.radius, this.radius * 2, this.radius * 2);
     } else {
@@ -438,7 +533,6 @@ class Fighter {
       ctx.fill();
     }
 
-    // Red flashing during charge
     if (this.rushState.startsWith('charging')) {
       ctx.globalAlpha = this.chargeFlashValue * 0.6;
       ctx.fillStyle = '#ff0000';
@@ -446,8 +540,6 @@ class Fighter {
       ctx.arc(drawX, drawY, this.radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
-
-      // Directional shield
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 5;
       ctx.beginPath();
@@ -455,7 +547,6 @@ class Fighter {
       ctx.stroke();
     }
 
-    // Stun visual
     if (this.rushStunTimer > 0) {
       ctx.strokeStyle = '#ffff00';
       ctx.lineWidth = 2;
@@ -464,7 +555,6 @@ class Fighter {
       ctx.stroke();
     }
 
-    // Determination Shield
     if (this.shieldActive) {
       ctx.strokeStyle = '#ff0000';
       ctx.lineWidth = 4;
@@ -473,7 +563,15 @@ class Fighter {
       ctx.stroke();
     }
 
-    // Knife animation
+    // Void Meter Visual Indicator
+    if (this.character.abilities && this.character.abilities.void_meter && this.voidMeter >= 100 && !this.voidExhausted) {
+      ctx.strokeStyle = '#4b0082';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, this.radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     if (this.character.abilities && this.character.abilities.knife && this.attackTime > 0) {
       const angle = this.attackAngle;
       ctx.save();

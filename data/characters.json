@@ -49,5 +49,18 @@
       "determination_rush": true
     },
     "assetFolder": "Dino"
+  },
+  {
+    "id": "sam",
+    "name": "Sam",
+    "hp": 100,
+    "damage": 4,
+    "speed": 265,
+    "color": "#2c233b",
+    "size": 36,
+    "abilities": {
+      "void_meter": true
+    },
+    "assetFolder": "Sam"
   }
 ]

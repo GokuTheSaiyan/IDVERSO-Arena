@@ -5,7 +5,8 @@ const FALLBACK_ROSTER = [
   { id: "fighterA", name: "Fighter A", hp: 100, damage: 5, speed: 220, color: "#ff5555", size: 36, abilities: {}, assetFolder: "FighterA" },
   { id: "fighterB", name: "Fighter B", hp: 100, damage: 5, speed: 220, color: "#5555ff", size: 36, abilities: {}, assetFolder: "FighterB" },
   { id: "itami", name: "Itami", hp: 100, damage: 5, speed: 250, color: "#4a1c1c", size: 36, abilities: { knife: true, parry: true, hate: true }, assetFolder: "Itami" },
-  { id: "dino", name: "Dino", hp: 100, damage: 6, speed: 200, color: "#855624", size: 42, abilities: { determination: true, determination_rush: true }, assetFolder: "Dino" }
+  { id: "dino", name: "Dino", hp: 100, damage: 6, speed: 200, color: "#855624", size: 42, abilities: { determination: true, determination_rush: true }, assetFolder: "Dino" },
+  { id: "sam", name: "Sam", hp: 100, damage: 4, speed: 265, color: "#2c233b", size: 36, abilities: { void_meter: true }, assetFolder: "Sam" }
 ];
 
 // ============================================================
@@ -54,6 +55,8 @@ class Game {
     this.particles = [];
     this.damageNumbers = [];
     this.hateSlashes = [];
+    this.summons = [];
+    this.summonSpawnTimer = 0;
     this.elapsed = 0;
     this.collisions = 0;
     this.winner = null;
@@ -89,7 +92,9 @@ class Game {
     this.hateSlashes.push(new HateSlash(owner.x, owner.y, target.x, target.y, owner, hateAmount));
     owner.hateSlashCooldown = 3.0;
     Sound.hateSlashLaunch();
-    this.log(`${owner.name} launched a HATE Slash.`);
+    if (!(target instanceof Summon)) {
+      this.log(`${owner.name} launched a HATE Slash.`);
+    }
   }
 
   spawnRushImpactEffect(x, y, color) {
@@ -100,10 +105,48 @@ class Game {
     }
   }
 
+  spawnHealEffect(x, y) {
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 40;
+      this.particles.push(new Particle(
+        x, y,
+        Math.cos(a) * speed,
+        Math.sin(a) * speed,
+        '#000000', // HATE palette
+        0.4,
+        3 + Math.random() * 2
+      ));
+    }
+  }
+
   update(dt) {
     this.elapsed += dt;
     this.fighters.forEach(f => f.update(dt, this.arena, this));
     this.checkFighterCollision();
+
+    // Handle Void Portal Spawning
+    this.fighters.forEach(f => {
+      if (f.voidPortalActive) {
+        this.summonSpawnTimer -= dt;
+        if (this.summonSpawnTimer <= 0 && this.summons.filter(s => s.alive).length < 3) {
+          this.summonSpawnTimer = 2.0;
+          const type = Math.random() < 0.5 ? 'scout' : 'heavy';
+          const target = f === this.fighterA ? this.fighterB : this.fighterA;
+          const summon = new Summon(f.portalX, f.portalY, type, f, target);
+          this.summons.push(summon);
+          if (type === 'scout') Sound.scoutSpawn(f.character.assetFolder);
+          else Sound.heavySpawn(f.character.assetFolder);
+          this.log(`${type.charAt(0).toUpperCase() + type.slice(1)} spawned.`);
+        }
+      }
+    });
+
+    // Update Summons
+    this.summons.forEach(s => s.update(dt, this.arena));
+    this.summons = this.summons.filter(s => s.alive);
+    
+    this.checkSummonCollisions();
 
     this.particles = this.particles.filter(p => p.life > 0);
     this.particles.forEach(p => p.update(dt));
@@ -114,6 +157,20 @@ class Game {
     this.hateSlashes = this.hateSlashes.filter(s => s.life > 0);
     this.hateSlashes.forEach(s => {
       s.update(dt);
+      
+      // Check vs summons
+      let hitSummon = false;
+      this.summons.forEach(summon => {
+        if (summon.alive && summon.owner !== s.owner && Math.hypot(s.x - summon.x, s.y - summon.y) < summon.radius + 10) {
+          summon.takeDamage(1);
+          if (!summon.alive) this.log(`${summon.type} was destroyed.`);
+          Sound.hateSlashHit();
+          s.life = 0;
+          hitSummon = true;
+        }
+      });
+      if (hitSummon) return;
+
       const target = s.owner === this.fighterA ? this.fighterB : this.fighterA;
       if (target.alive && Math.hypot(s.x - target.x, s.y - target.y) < target.radius + 10) {
         const dmgTaken = target.takeDamage(s.damage, s.owner, this);
@@ -133,6 +190,7 @@ class Game {
         }
         s.life = 0;
       }
+      
       if (s.x < this.arena.x - 50 || s.x > this.arena.x + this.arena.size + 50 || s.y < this.arena.y - 50 || s.y > this.arena.y + this.arena.size + 50) {
         s.life = 0;
       }
@@ -147,6 +205,108 @@ class Game {
     }
   }
 
+  checkSummonCollisions() {
+    this.summons.forEach(s => {
+      if (!s.alive) return;
+
+      // Bounce summons off each other
+      this.summons.forEach(s2 => {
+        if (s !== s2 && s2.alive) {
+          const dx = s2.x - s.x;
+          const dy = s2.y - s.y;
+          const dist = Math.hypot(dx, dy);
+          const minDist = s.radius + s2.radius;
+          if (dist < minDist) {
+            const safeDist = Math.max(0.0001, dist);
+            const nx = dx / safeDist;
+            const ny = dy / safeDist;
+            const overlap = minDist - safeDist;
+            s.x -= nx * overlap / 2;
+            s.y -= ny * overlap / 2;
+            s2.x += nx * overlap / 2;
+            s2.y += ny * overlap / 2;
+            s.vx = -s.vx;
+            s.vy = -s.vy;
+          }
+        }
+      });
+
+      // Vs Enemy
+      const enemy = s.target;
+      if (enemy.alive && !enemy.voidPortalActive && Math.hypot(s.x - enemy.x, s.y - enemy.y) < s.radius + enemy.radius) {
+        
+        // Itami Parry Interaction
+        if (enemy.character.abilities && enemy.character.abilities.parry && Math.random() < 0.15) {
+          s.alive = false;
+          if (s.type === 'scout') {
+            enemy.hate += 5;
+            enemy.hp = Math.min(enemy.maxHp, enemy.hp + 8); // Moderate heal
+            Sound.scoutParry(enemy.character.assetFolder);
+            this.log(`${enemy.name} parried a Scout and recovered health.`);
+          } else {
+            enemy.hate += 10;
+            enemy.hp = Math.min(enemy.maxHp, enemy.hp + 15); // Generous heal
+            Sound.heavyParry(enemy.character.assetFolder);
+            this.log(`${enemy.name} parried a Heavy and recovered health.`);
+          }
+          if (enemy.hate > 100) enemy.hate = 100;
+          Sound.parryHeal(enemy.character.assetFolder);
+          this.spawnParryEffect(s.x, s.y);
+          this.spawnHealEffect(enemy.x, enemy.y);
+          return; // Skip normal damage
+        }
+
+        const dx = enemy.x - s.x;
+        const dy = enemy.y - s.y;
+        const dist = Math.max(0.1, Math.hypot(dx, dy));
+        const nx = dx / dist, ny = dy / dist;
+        const overlap = (s.radius + enemy.radius) - dist;
+        s.x -= nx * overlap * 0.5;
+        s.y -= ny * overlap * 0.5;
+        enemy.x += nx * overlap * 0.5;
+        enemy.y += ny * overlap * 0.5;
+        
+        const dvx = enemy.vx - s.vx;
+        const dvy = enemy.vy - s.vy;
+        const dot = dvx * nx + dvy * ny;
+        if (dot < 0) {
+          s.vx += dot * nx;
+          s.vy += dot * ny;
+          enemy.vx -= dot * nx;
+          enemy.vy -= dot * ny;
+        }
+
+        if (enemy.hitCooldown <= 0) {
+          enemy.takeDamage(s.damage, s.owner, this);
+          this.log(`${s.type} hit ${enemy.name} for ${s.damage} damage.`);
+          enemy.hitCooldown = 0.18;
+          this.damageNumbers.push(new DamageNumber(enemy.x, enemy.y, s.damage, enemy.color));
+          Sound.hit();
+          
+          // Summon takes 1 hit damage from enemy collision
+          s.takeDamage(1);
+          if (!s.alive) this.log(`${s.type} was destroyed.`);
+        }
+      }
+
+      // Vs Sam (Owner) - Absorption
+      const owner = s.owner;
+      if (owner.alive && !owner.voidPortalActive && Math.hypot(s.x - owner.x, s.y - owner.y) < s.radius + owner.radius) {
+        s.alive = false;
+        if (s.type === 'scout') {
+          owner.hp = Math.min(owner.maxHp, owner.hp + 10);
+          Sound.scoutAbsorb(owner.character.assetFolder);
+          this.log(`${owner.name} absorbed a Scout and recovered health.`);
+        } else {
+          owner.hp = Math.min(owner.maxHp, owner.hp + 15); // Reduced Heavy healing
+          Sound.heavyAbsorb(owner.character.assetFolder);
+          this.log(`${owner.name} absorbed a Heavy and recovered health.`);
+        }
+        Sound.heal(owner.character.assetFolder);
+      }
+    });
+  }
+
   checkFighterCollision() {
     const [a, b] = this.fighters;
     if (!a.alive || !b.alive) return;
@@ -155,6 +315,30 @@ class Game {
     const dy = b.y - a.y;
     const dist = Math.hypot(dx, dy);
     const minDist = a.radius + b.radius;
+
+    // Handle Void Portal Invulnerability (Immovable Object)
+    if (a.voidPortalActive || b.voidPortalActive) {
+      const sam = a.voidPortalActive ? a : b;
+      const other = a.voidPortalActive ? b : a;
+      const sDx = other.x - sam.x;
+      const sDy = other.y - sam.y;
+      const sDist = Math.hypot(sDx, sDy);
+      const sMinDist = sam.radius + other.radius;
+      if (sDist < sMinDist) {
+        const safeDist = Math.max(0.0001, sDist);
+        const nx = sDx / safeDist;
+        const ny = sDy / safeDist;
+        const overlap = sMinDist - safeDist;
+        other.x += nx * overlap;
+        other.y += ny * overlap;
+        const dot = other.vx * nx + other.vy * ny;
+        if (dot < 0) {
+          other.vx -= 2 * dot * nx;
+          other.vy -= 2 * dot * ny;
+        }
+      }
+      return;
+    }
 
     if (dist < minDist) {
       const safeDist = Math.max(0.0001, dist);
@@ -173,19 +357,36 @@ class Game {
         const rusher = aIsRushing ? a : b;
         const target = aIsRushing ? b : a;
 
-        // Check if target parries the rush
+        // Check for summon collision first
+        let hitSummon = false;
+        this.summons.forEach(s => {
+          if (s.alive && s.owner !== rusher && Math.hypot(s.x - rusher.x, s.y - rusher.y) < s.radius + rusher.radius) {
+            const speed = Math.hypot(rusher.vx, rusher.vy);
+            const rushDmg = Math.round(8 + (speed / 1200) * 10);
+            s.takeDamage(rushDmg);
+            this.log(`${rusher.name}'s Rush collided with a ${s.type}.`);
+            if (!s.alive) this.log(`${s.type} was destroyed.`);
+            Sound.rushImpact();
+            this.spawnRushImpactEffect(s.x, s.y, rusher.color);
+            hitSummon = true;
+          }
+        });
+        
+        if (hitSummon) {
+          rusher.endRush(this, true);
+          return;
+        }
+
         if (target.character.abilities && target.character.abilities.parry && Math.random() < 0.15) {
           this.log(`${target.name} parried the Rush.`);
           Sound.rushParry();
           this.spawnParryEffect(target.x, target.y);
 
-          // Itami is launched backwards
           const len = Math.hypot(rusher.vx, rusher.vy);
           target.vx = -rusher.vx / len;
           target.vy = -rusher.vy / len;
           target.speedBoost = 400;
 
-          // Large HATE bonus
           if (target.character.abilities.hate) {
             target.hate += 60;
             if (target.hate > 100) target.hate = 100;
@@ -201,13 +402,11 @@ class Game {
             }
           }
 
-          // Rusher continues normally - no damage to either side
           rusher.hitCooldown = 0.3;
           target.hitCooldown = 0.3;
           return;
         }
 
-        // Normal rush impact
         const speed = Math.hypot(rusher.vx, rusher.vy);
         const baseRushDmg = 8;
         const speedMultiplier = speed / 1200;
@@ -263,7 +462,6 @@ class Game {
             const cy = (a.y + b.y) / 2;
             this.log(`${a.name} collided with ${b.name}`);
 
-            // A attacks B
             if (b.character.abilities && b.character.abilities.parry && Math.random() < 0.15) {
               this.log(`${b.name} successfully parried the attack`);
               if (b.character.abilities.hate) {
@@ -284,7 +482,6 @@ class Game {
               else { this.damageNumbers.push(new DamageNumber(b.x, b.y - 40, 'BLOCKED!', '#ff0000')); }
             }
 
-            // B attacks A
             if (a.character.abilities && a.character.abilities.parry && Math.random() < 0.15) {
               this.log(`${a.name} successfully parried the attack`);
               if (a.character.abilities.hate) {
@@ -352,6 +549,21 @@ class Game {
     this.arena.draw(ctx);
     this.particles.forEach(p => p.draw(ctx));
     this.hateSlashes.forEach(s => s.draw(ctx));
+    
+    // Draw Portals as large vertical ovals
+    this.fighters.forEach(f => {
+      if (f.voidPortalActive) {
+        ctx.fillStyle = '#1a0a2a';
+        ctx.beginPath();
+        ctx.ellipse(f.portalX, f.portalY, 35, 70, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#4b0082';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+    });
+
+    this.summons.forEach(s => s.draw(ctx));
     this.fighters.forEach(f => f.draw(ctx));
     this.fighters.forEach(f => f.drawHpBar(ctx));
     this.damageNumbers.forEach(d => d.draw(ctx));

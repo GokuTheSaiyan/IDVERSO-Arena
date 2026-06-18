@@ -46,19 +46,29 @@ function updateBattleUI(g) {
 
     if (f.character.abilities && f.character.abilities.determination) {
       const detPct = f.determination;
-      let detLabel = 'Det';
-      if (f.rushCooldownTimer > 0) detLabel = 'Det (CD)';
-      if (f.rushState && f.rushState.startsWith('charging')) detLabel = 'Det (Chg)';
-      if (f.rushState && f.rushState.startsWith('rushing')) detLabel = 'Det (Rush)';
-      if (f.rushStunTimer > 0) detLabel = 'Det (Stun)';
+      let detLabel = 'DETERMINATION';
+      if (f.rushCooldownTimer > 0) detLabel = 'DETERMINATION (CD)';
+      if (f.rushState && f.rushState.startsWith('charging')) detLabel = 'DETERMINATION (Chg)';
+      if (f.rushState && f.rushState.startsWith('rushing')) detLabel = 'DETERMINATION (Rush)';
+      if (f.rushStunTimer > 0) detLabel = 'DETERMINATION (Stun)';
       detHtml += '<div class="stat-row"><div class="stat-name" style="color:#ff0000">' + f.name + ' ' + detLabel + '</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + detPct + '%; background:#ff0000"></div></div><div class="stat-val" style="color:#ff0000">' + Math.round(detPct) + '%</div></div>';
     }
 
     if (f.character.abilities && f.character.abilities.hate) {
       const hatePct = f.hate;
-      let hateLabel = 'HATE';
-      if (f.hateUnlocked) hateLabel = 'HATE (Unlocked)';
+      let hateLabel = 'Hate Meter';
+      if (f.hateUnlocked) hateLabel = 'Hate Meter (Unlocked)';
       detHtml += '<div class="stat-row"><div class="stat-name" style="color:#dddddd">' + f.name + ' ' + hateLabel + '</div><div class="stat-bar-bg" style="border:1px solid #555;"><div class="stat-bar-fill" style="width:' + hatePct + '%; background:#000000; border-right: 1px solid #444;"></div></div><div class="stat-val" style="color:#dddddd">' + Math.round(hatePct) + '%</div></div>';
+    }
+
+    if (f.character.abilities && f.character.abilities.void_meter) {
+      const voidPct = f.voidMeter;
+      const voidColor = '#4b0082';
+      const voidTextColor = '#c0a0e0';
+      let voidLabel = 'Void Meter';
+      if (f.voidExhausted) voidLabel = 'Void Meter (Exhausted)';
+      else if (f.voidPortalActive) voidLabel = 'Void Meter (Active)';
+      detHtml += '<div class="stat-row"><div class="stat-name" style="color:' + voidTextColor + '">' + f.name + ' ' + voidLabel + '</div><div class="stat-bar-bg" style="border:1px solid #555;"><div class="stat-bar-fill" style="width:' + voidPct + '%; background:' + voidColor + ';"></div></div><div class="stat-val" style="color:' + voidTextColor + '">' + Math.round(voidPct) + '%</div></div>';
     }
   });
 
