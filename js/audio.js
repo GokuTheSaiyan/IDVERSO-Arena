@@ -135,6 +135,68 @@ class AudioManager {
     });
   }
 
+  hateGain() {
+    this.play('hate_gain', null, () => this.playTone(60, 0.05, 'sawtooth', 0.04));
+  }
+
+  hateFull() {
+    this.play('hate_full', null, () => {
+      this.playTone(80, 0.3, 'sawtooth', 0.15);
+      setTimeout(() => this.playTone(50, 0.4, 'sawtooth', 0.15), 100);
+    });
+  }
+
+  hateSlashPrep() {
+    this.play('hate_slash_prep', null, () => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(250, this.ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.2);
+    });
+  }
+
+  hateSlashLaunch() {
+    this.play('hate_slash_launch', null, () => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.25);
+      gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.25);
+    });
+  }
+
+  hateSlashHit() {
+    this.play('hate_slash_hit', null, () => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.2);
+    });
+  }
+
   countdown() { this.playTone(440, 0.15); }
   
   fight() {

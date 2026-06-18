@@ -31,7 +31,8 @@
     "size": 36,
     "abilities": {
       "knife": true,
-      "parry": true
+      "parry": true,
+      "hate": true
     },
     "assetFolder": "Itami"
   },

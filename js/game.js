@@ -5,7 +5,7 @@
 const FALLBACK_ROSTER = [
   { id: "fighterA", name: "Fighter A", hp: 100, damage: 5, speed: 220, color: "#ff5555", size: 36, abilities: {}, assetFolder: "FighterA" },
   { id: "fighterB", name: "Fighter B", hp: 100, damage: 5, speed: 220, color: "#5555ff", size: 36, abilities: {}, assetFolder: "FighterB" },
-  { id: "itami", name: "Itami", hp: 100, damage: 5, speed: 250, color: "#4a1c1c", size: 36, abilities: { knife: true, parry: true }, assetFolder: "Itami" },
+  { id: "itami", name: "Itami", hp: 100, damage: 5, speed: 250, color: "#4a1c1c", size: 36, abilities: { knife: true, parry: true, hate: true }, assetFolder: "Itami" },
   { id: "dino", name: "Dino", hp: 100, damage: 6, speed: 200, color: "#855624", size: 42, abilities: { determination: true }, assetFolder: "Dino" }
 ];
 
@@ -45,17 +45,26 @@ class Arena {
 //  CLASS: Game
 // ============================================================
 class Game {
-  constructor(canvas, charA, charB) {
+  constructor(canvas, charA, charB, scenario = 'default') {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.arena = new Arena(50, 50, 600);
+    
+    let arenaSize = 600;
+    if (scenario === 'small') arenaSize = 500;
+    if (scenario === 'compact') arenaSize = 400;
+    
+    const arenaX = (canvas.width - arenaSize) / 2;
+    const arenaY = (canvas.height - arenaSize) / 2;
+    
+    this.arena = new Arena(arenaX, arenaY, arenaSize);
 
-    this.fighterA = new Fighter(charA, this.arena.x + 150, this.arena.y + 150, Math.PI / 4);
-    this.fighterB = new Fighter(charB, this.arena.x + this.arena.size - 150, this.arena.y + this.arena.size - 150, Math.PI * 5 / 4);
+    this.fighterA = new Fighter(charA, this.arena.x + arenaSize * 0.25, this.arena.y + arenaSize * 0.25, Math.PI / 4);
+    this.fighterB = new Fighter(charB, this.arena.x + arenaSize * 0.75, this.arena.y + arenaSize * 0.75, Math.PI * 5 / 4);
     this.fighters = [this.fighterA, this.fighterB];
 
     this.particles = [];
     this.damageNumbers = [];
+    this.hateSlashes = [];
     this.elapsed = 0;
     this.collisions = 0;
     this.winner = null;
@@ -87,6 +96,14 @@ class Game {
     return base;
   }
 
+  spawnHateSlash(owner, target, hateAmount) {
+    // Spawn from owner's position, travel toward target
+    this.hateSlashes.push(new HateSlash(owner.x, owner.y, target.x, target.y, owner, hateAmount));
+    owner.hateSlashCooldown = 3.0; // Cooldown starts after creation
+    Sound.hateSlashLaunch();
+    this.log(`${owner.name} launched a HATE Slash.`);
+  }
+
   update(dt) {
     this.elapsed += dt;
 
@@ -98,6 +115,51 @@ class Game {
 
     this.damageNumbers = this.damageNumbers.filter(d => d.life > 0);
     this.damageNumbers.forEach(d => d.update(dt));
+
+    // Update HATE Slashes
+    this.hateSlashes = this.hateSlashes.filter(s => s.life > 0);
+    this.hateSlashes.forEach(s => {
+      s.update(dt);
+      
+      const target = s.owner === this.fighterA ? this.fighterB : this.fighterA;
+      if (target.alive && Math.hypot(s.x - target.x, s.y - target.y) < target.radius + 10) {
+        const dmgTaken = target.takeDamage(s.damage, s.owner, this);
+        if (dmgTaken) {
+          this.log(`HATE Slash hit ${target.name}.`);
+          this.log(`${target.name} was launched by the HATE Slash.`);
+          Sound.hateSlashHit();
+          
+          // Strong knockback
+          const len = Math.hypot(s.vx, s.vy);
+          target.vx = s.vx / len;
+          target.vy = s.vy / len;
+          target.speedBoost = s.knockback; // Massive knockback boost
+          
+          this.damageNumbers.push(new DamageNumber(s.x, s.y, s.damage, target.color));
+          
+          // Impact effect
+          for (let i = 0; i < 10 + s.scale * 10; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const speed = 100 + Math.random() * 150;
+            this.particles.push(new Particle(
+              s.x, s.y,
+              Math.cos(a) * speed,
+              Math.sin(a) * speed,
+              '#000000',
+              0.3,
+              (4 + Math.random() * 3) * (0.5 + s.scale)
+            ));
+          }
+        }
+        s.life = 0;
+      }
+      
+      // Check arena bounds
+      if (s.x < this.arena.x - 50 || s.x > this.arena.x + this.arena.size + 50 || 
+          s.y < this.arena.y - 50 || s.y > this.arena.y + this.arena.size + 50) {
+        s.life = 0;
+      }
+    });
 
     const alive = this.fighters.filter(f => f.hp > 0);
     if (alive.length < 2) {
@@ -162,6 +224,22 @@ class Game {
         // --- A attacks B ---
         if (b.character.abilities && b.character.abilities.parry && Math.random() < 0.15) {
           this.log(`${b.name} successfully parried the attack`);
+          
+          // Parry grants HATE
+          if (b.character.abilities.hate) {
+            b.hate += 35; // Considerable gain
+            if (b.hate >= 100) {
+              b.hate = 100;
+              if (!b.hateMaxed) {
+                b.hateMaxed = true;
+                Sound.hateFull();
+                this.log(`${b.name}'s HATE reached maximum.`);
+              }
+            }
+            this.log(`${b.name} gained HATE from a successful parry.`);
+            Sound.hateGain();
+          }
+          
           const dmgTaken = a.takeDamage(dmgA, b, this);
           if (dmgTaken) {
             this.log(`${b.name} dealt ${dmgA} damage to ${a.name}`);
@@ -185,6 +263,22 @@ class Game {
         // --- B attacks A ---
         if (a.character.abilities && a.character.abilities.parry && Math.random() < 0.15) {
           this.log(`${a.name} successfully parried the attack`);
+          
+          // Parry grants HATE
+          if (a.character.abilities.hate) {
+            a.hate += 35; // Considerable gain
+            if (a.hate >= 100) {
+              a.hate = 100;
+              if (!a.hateMaxed) {
+                a.hateMaxed = true;
+                Sound.hateFull();
+                this.log(`${a.name}'s HATE reached maximum.`);
+              }
+            }
+            this.log(`${a.name} gained HATE from a successful parry.`);
+            Sound.hateGain();
+          }
+          
           const dmgTaken = b.takeDamage(dmgB, a, this);
           if (dmgTaken) {
             this.log(`${a.name} dealt ${dmgB} damage to ${b.name}`);
@@ -265,6 +359,10 @@ class Game {
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.arena.draw(ctx);
     this.particles.forEach(p => p.draw(ctx));
+    
+    // Draw HATE Slashes between particles and fighters for layering
+    this.hateSlashes.forEach(s => s.draw(ctx));
+    
     this.fighters.forEach(f => f.draw(ctx));
     this.fighters.forEach(f => f.drawHpBar(ctx));
     this.damageNumbers.forEach(d => d.draw(ctx));

@@ -68,6 +68,18 @@ class Fighter {
     this.shieldActive = false;
     this.detCooldown = 0;
 
+    // HATE System
+    this.hate = 0;
+    this.hateMaxed = false;
+    this.hateSlashCooldown = 0;
+    
+    // HATE Slash Windup State
+    this.hateWindupTime = 0;
+    this.hateSlashTarget = null;
+    this.hateSlashAmount = 0;
+    this.storedVx = 0;
+    this.storedVy = 0;
+
     // Load Sprite if available
     this.sprite = null;
     if (character.assetFolder) {
@@ -82,6 +94,29 @@ class Fighter {
 
   update(dt, arena, game) {
     if (!this.alive) return;
+
+    // HATE Slash Windup Pause
+    if (this.hateWindupTime > 0) {
+      this.hateWindupTime -= dt;
+      if (this.hateWindupTime <= 0) {
+        this.hateWindupTime = 0;
+        // Fire projectile using target's current position
+        if (this.hateSlashTarget) {
+          game.spawnHateSlash(this, this.hateSlashTarget, this.hateSlashAmount);
+          // Deduct HATE after firing
+          this.hate -= this.hateSlashAmount;
+          if (this.hate < 100) this.hateMaxed = false;
+        }
+        // Restore velocity
+        this.vx = this.storedVx;
+        this.vy = this.storedVy;
+      }
+      
+      // Still update visual timers
+      if (this.flashTime > 0) this.flashTime -= dt;
+      if (this.attackTime > 0) this.attackTime -= dt;
+      return; // Skip normal movement
+    }
 
     this.x += this.vx * dt;
     this.y += this.vy * dt;
@@ -111,7 +146,13 @@ class Fighter {
     // Maintain speed with minimum threshold
     const m = Math.hypot(this.vx, this.vy);
     if (m > 0.001) {
-      const currentSpeed = this.baseSpeed + this.speedBoost;
+      let currentSpeed = this.baseSpeed + this.speedBoost;
+      
+      // HATE Speed Bonus
+      if (this.character.abilities && this.character.abilities.hate) {
+        currentSpeed += (this.hate / 100) * 50; // Up to +50 speed
+      }
+      
       this.vx = (this.vx / m) * currentSpeed;
       this.vy = (this.vy / m) * currentSpeed;
     } else {
@@ -151,6 +192,34 @@ class Fighter {
       }
     }
 
+    // HATE System Passive Activation (No collision required)
+    if (this.character.abilities && this.character.abilities.hate && this.alive) {
+      if (this.hateSlashCooldown > 0) {
+        this.hateSlashCooldown -= dt;
+      } else if (this.hate >= 100) {
+        // ~50% chance per second to activate when off cooldown
+        if (Math.random() < 0.5 * dt) {
+          // Decide how much HATE to use
+          const choices = [25, 50, 75, 100];
+          this.hateSlashAmount = choices[Math.floor(Math.random() * choices.length)];
+          
+          const target = this === game.fighterA ? game.fighterB : game.fighterA;
+          if (target.alive) {
+            this.hateSlashTarget = target;
+            this.hateWindupTime = 0.3; // Brief pause to animate
+            this.storedVx = this.vx;
+            this.storedVy = this.vy;
+            this.vx = 0;
+            this.vy = 0;
+            this.triggerAttack(target.x, target.y); // Trigger knife animation
+            Sound.hateSlashPrep();
+            game.log(`${this.name} prepared a HATE Slash.`);
+            game.log(`${this.name} decided to use ${this.hateSlashAmount}% HATE.`);
+          }
+        }
+      }
+    }
+
     if (this.flashTime > 0) this.flashTime -= dt;
     if (this.hitCooldown > 0) this.hitCooldown -= dt;
     if (this.attackTime > 0) this.attackTime -= dt;
@@ -167,6 +236,7 @@ class Fighter {
     this.hp = Math.max(0, this.hp - amount);
     this.flashTime = 0.15;
     
+    // Determination gain from damage
     if (this.character.abilities && this.character.abilities.determination && this.detCooldown <= 0) {
       this.determination += amount * 3;
       if (this.determination >= 100) {
@@ -176,6 +246,19 @@ class Fighter {
         game.log(`${this.name} activated Determination Shield`);
         Sound.detFull(this.character.assetFolder);
         Sound.shieldOn(this.character.assetFolder);
+      }
+    }
+
+    // HATE gain from damage
+    if (this.character.abilities && this.character.abilities.hate) {
+      this.hate += amount * 1.5; // Moderate gain
+      if (this.hate > 100) this.hate = 100;
+      Sound.hateGain();
+      
+      if (this.hate >= 100 && !this.hateMaxed) {
+        this.hateMaxed = true;
+        Sound.hateFull();
+        game.log(`${this.name}'s HATE reached maximum.`);
       }
     }
     

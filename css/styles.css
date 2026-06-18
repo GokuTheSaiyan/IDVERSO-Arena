@@ -186,6 +186,29 @@ body {
   color: #fff;
 }
 
+.scenario-selector {
+  margin-top: 20px;
+  width: 100%;
+  text-align: center;
+}
+
+.scenario-selector label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: #ccc;
+}
+
+.scenario-selector select {
+  width: 100%;
+  padding: 8px;
+  background: #3a3a3a;
+  color: #fff;
+  border: 2px solid #1a1a1a;
+  font-family: inherit;
+  font-size: 12px;
+}
+
 /* ===== START BUTTON ===== */
 .start-btn {
   display: block;

@@ -21,6 +21,7 @@ const canvas           = document.getElementById('canvas');
 const battleNameA      = document.getElementById('battle-name-a');
 const battleNameB      = document.getElementById('battle-name-b');
 const battleLogEl      = document.getElementById('battle-log');
+const scenarioSelect   = document.getElementById('scenario-select');
 
 function clearBattleLog() {
   battleLogEl.innerHTML = '';
@@ -60,6 +61,17 @@ function updateBattleUI(g) {
                  '<div class="stat-name" style="color:' + detColor + '">' + f.name + ' Det</div>' +
                  '<div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + detPct + '%; background:' + detColor + '"></div></div>' +
                  '<div class="stat-val" style="color:' + detColor + '">' + Math.round(detPct) + '%</div>' +
+                 '</div>';
+    }
+    
+    if (f.character.abilities && f.character.abilities.hate) {
+      const hatePct = f.hate;
+      const hateColor = '#000000';
+      const hateTextColor = '#dddddd';
+      detHtml += '<div class="stat-row">' +
+                 '<div class="stat-name" style="color:' + hateTextColor + '">' + f.name + ' HATE</div>' +
+                 '<div class="stat-bar-bg" style="border:1px solid #555;"><div class="stat-bar-fill" style="width:' + hatePct + '%; background:' + hateColor + '; border-right: 1px solid #444;"></div></div>' +
+                 '<div class="stat-val" style="color:' + hateTextColor + '">' + Math.round(hatePct) + '%</div>' +
                  '</div>';
     }
   });
@@ -196,6 +208,7 @@ function runCountdown(onComplete) {
 function startBattle() {
   const charA = ROSTER.find(c => c.id === selectionA);
   const charB = ROSTER.find(c => c.id === selectionB);
+  const scenario = scenarioSelect.value;
 
   battleNameA.textContent = charA.name;
   battleNameA.style.color = charA.color;
@@ -205,7 +218,7 @@ function startBattle() {
   showScreen('battle');
   clearBattleLog();
 
-  game = new Game(canvas, charA, charB);
+  game = new Game(canvas, charA, charB, scenario);
   game.onGameOver = handleGameOver;
   game.onLog = (text) => addLogEntry(text);
   game.draw();
