@@ -11,7 +11,14 @@
   <!-- ===== MENU SCREEN ===== -->
   <div id="menu-screen" class="screen active">
     <h1 class="menu-title">IDVERSO Arena</h1>
-    <div class="menu-layout">
+    
+    <div class="mode-selector">
+      <div class="mode-label">Game Mode:</div>
+      <button class="mode-btn active" id="mode-standard">Standard Battle</button>
+      <button class="mode-btn" id="mode-triple">Triple Threat</button>
+    </div>
+
+    <div class="menu-layout" id="menu-layout">
       <div class="player-panel player-a">
         <div class="panel-header">
           <h2>Player A</h2>
@@ -27,6 +34,10 @@
         </div>
         <div class="preview-vs">VS</div>
         <div class="preview-fighter" id="preview-b">
+          <div class="preview-placeholder">Select Fighter</div>
+        </div>
+        <div class="preview-vs" id="preview-vs-2" style="display: none;">VS</div>
+        <div class="preview-fighter" id="preview-c" style="display: none;">
           <div class="preview-placeholder">Select Fighter</div>
         </div>
         
@@ -47,6 +58,14 @@
         </div>
         <div class="character-list" id="list-b"></div>
       </div>
+
+      <div class="player-panel player-c" id="panel-c" style="display: none;">
+        <div class="panel-header">
+          <h2>Player C</h2>
+          <button class="btn-random" data-player="C">Random</button>
+        </div>
+        <div class="character-list" id="list-c"></div>
+      </div>
     </div>
     <button class="start-btn" id="start-btn" disabled>Select Both Fighters</button>
   </div>
@@ -57,6 +76,8 @@
       <span id="battle-name-a">Fighter A</span>
       <span class="vs-label">VS</span>
       <span id="battle-name-b">Fighter B</span>
+      <span class="vs-label" id="battle-vs-2" style="display: none;">VS</span>
+      <span id="battle-name-c" style="display: none;">Fighter C</span>
     </div>
     <div class="battle-content">
       <canvas id="canvas" width="700" height="700"></canvas>

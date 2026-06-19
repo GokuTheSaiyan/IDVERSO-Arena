@@ -42,6 +42,7 @@ class Fighter {
     this.hitCooldown = 0;
     this.hitsLanded  = 0;
     this.alive       = true;
+    this.defeatLogged = false; // For Triple Threat logging
 
     this.attackTime  = 0;
     this.attackAngle = 0;
@@ -87,7 +88,7 @@ class Fighter {
     this.lastVoidMilestone = 0;
     this.voidPortalActive = false;
     this.voidPortalTriggered = false;
-    this.voidExhausted = false; // New exhaustion state
+    this.voidExhausted = false;
     this.portalX = 0;
     this.portalY = 0;
 
@@ -110,13 +111,16 @@ class Fighter {
     this.storedVy = this.vy;
     this.vx = 0; this.vy = 0;
     
-    const fighterTarget = this === game.fighterA ? game.fighterB : game.fighterA;
-    let actualTarget = fighterTarget;
-    // Special Targeting During Portal State
-    if (fighterTarget.voidPortalActive) {
-      const validSummons = game.summons.filter(s => s.alive);
-      if (validSummons.length > 0) {
-        actualTarget = validSummons[Math.floor(Math.random() * validSummons.length)];
+    // Find a valid opponent naturally
+    const opponents = game.fighters.filter(f => f !== this && f.alive);
+    let actualTarget = this; // Fallback
+    if (opponents.length > 0) {
+      actualTarget = opponents[Math.floor(Math.random() * opponents.length)];
+      if (actualTarget.voidPortalActive) {
+        const validSummons = game.summons.filter(s => s.alive);
+        if (validSummons.length > 0) {
+          actualTarget = validSummons[Math.floor(Math.random() * validSummons.length)];
+        }
       }
     }
     this.rushTarget = actualTarget;
@@ -178,7 +182,6 @@ class Fighter {
 
     // Void Meter Generation
     if (this.character.abilities && this.character.abilities.void_meter && this.alive) {
-      // Permanent Exhaustion Check
       if (!this.voidExhausted && this.voidMeter < 100) {
         this.voidMeter += dt * 1.25;
         if (this.voidMeter > 100) this.voidMeter = 100;
@@ -203,7 +206,6 @@ class Fighter {
         this.storedVy = this.vy;
         this.vx = 0; this.vy = 0;
         
-        // Nearest wall calculation and exact center placement
         const cx = this.x;
         const cy = this.y;
         const distLeft = cx - arena.x;
@@ -212,7 +214,6 @@ class Fighter {
         const distBottom = (arena.y + arena.size) - cy;
         const minDist = Math.min(distLeft, distRight, distTop, distBottom);
         
-        // Offset to keep the 35x70 oval fully visible and unclipped
         if (minDist === distLeft) { this.portalX = arena.x + 35; this.portalY = arena.y + arena.size / 2; }
         else if (minDist === distRight) { this.portalX = arena.x + arena.size - 35; this.portalY = arena.y + arena.size / 2; }
         else if (minDist === distTop) { this.portalX = arena.x + arena.size / 2; this.portalY = arena.y + 70; }
@@ -224,11 +225,11 @@ class Fighter {
       }
 
       if (this.voidPortalActive) {
-        this.voidMeter -= dt * 4; // Reduced drain rate
+        this.voidMeter -= dt * 4;
         if (this.voidMeter <= 0) {
           this.voidMeter = 0;
           this.voidPortalActive = false;
-          this.voidExhausted = true; // Lock meter permanently
+          this.voidExhausted = true;
           this.vx = this.storedVx;
           this.vy = this.storedVy;
           game.log(`Void Meter depleted.`);
@@ -237,7 +238,7 @@ class Fighter {
           game.log(`${this.name} returned to battle.`);
         }
         if (this.flashTime > 0) this.flashTime -= dt;
-        return; // Skip normal movement
+        return;
       }
     }
 
@@ -296,9 +297,10 @@ class Fighter {
       if (!this.rushDirectionLocked) {
         let trackTarget = this.rushTarget;
         if (!trackTarget || !trackTarget.alive) {
-          trackTarget = this === game.fighterA ? game.fighterB : game.fighterA;
+          const opponents = game.fighters.filter(f => f !== this && f.alive);
+          if (opponents.length > 0) trackTarget = opponents[Math.floor(Math.random() * opponents.length)];
         }
-        if (trackTarget.alive) {
+        if (trackTarget && trackTarget.alive) {
           this.rushAngle = Math.atan2(trackTarget.y - this.y, trackTarget.x - this.x);
         }
       }
@@ -403,27 +405,29 @@ class Fighter {
           if (validChoices.length === 0) validChoices = [this.hate];
           this.hateSlashAmount = validChoices[Math.floor(Math.random() * validChoices.length)];
           
-          const fighterTarget = this === game.fighterA ? game.fighterB : game.fighterA;
-          let actualTarget = fighterTarget;
-          // Special Targeting During Portal State
-          if (fighterTarget.voidPortalActive) {
-            const validSummons = game.summons.filter(s => s.alive);
-            if (validSummons.length > 0) {
-              actualTarget = validSummons[Math.floor(Math.random() * validSummons.length)];
-              game.log(`${this.name}'s HATE Slash targeted a ${actualTarget.type}.`);
+          // Select a valid opponent naturally
+          const opponents = game.fighters.filter(f => f !== this && f.alive);
+          if (opponents.length > 0) {
+            let actualTarget = opponents[Math.floor(Math.random() * opponents.length)];
+            if (actualTarget.voidPortalActive) {
+              const validSummons = game.summons.filter(s => s.alive);
+              if (validSummons.length > 0) {
+                actualTarget = validSummons[Math.floor(Math.random() * validSummons.length)];
+                game.log(`${this.name}'s HATE Slash targeted a ${actualTarget.type}.`);
+              }
             }
-          }
-          
-          if (actualTarget.alive) {
-            this.hateSlashTarget = actualTarget;
-            this.hateWindupTime = 0.3;
-            this.storedVx = this.vx;
-            this.storedVy = this.vy;
-            this.vx = 0; this.vy = 0;
-            this.triggerAttack(actualTarget.x, actualTarget.y);
-            Sound.hateSlashPrep();
-            game.log(`${this.name} prepared a HATE Slash.`);
-            game.log(`${this.name} decided to use ${this.hateSlashAmount}% HATE.`);
+            
+            if (actualTarget.alive) {
+              this.hateSlashTarget = actualTarget;
+              this.hateWindupTime = 0.3;
+              this.storedVx = this.vx;
+              this.storedVy = this.vy;
+              this.vx = 0; this.vy = 0;
+              this.triggerAttack(actualTarget.x, actualTarget.y);
+              Sound.hateSlashPrep();
+              game.log(`${this.name} prepared a HATE Slash.`);
+              game.log(`${this.name} decided to use ${this.hateSlashAmount}% HATE.`);
+            }
           }
         }
       }

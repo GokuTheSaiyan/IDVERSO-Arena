@@ -4,7 +4,9 @@
 let ROSTER = [];
 let selectionA = null;
 let selectionB = null;
+let selectionC = null;
 let game = null;
+let gameMode = 'standard';
 
 const menuScreen       = document.getElementById('menu-screen');
 const battleScreen     = document.getElementById('battle-screen');
@@ -19,6 +21,14 @@ const charselectBtn    = document.getElementById('charselect-btn');
 const canvas           = document.getElementById('canvas');
 const battleNameA      = document.getElementById('battle-name-a');
 const battleNameB      = document.getElementById('battle-name-b');
+const battleNameC      = document.getElementById('battle-name-c');
+const battleVs2        = document.getElementById('battle-vs-2');
+const panelC           = document.getElementById('panel-c');
+const previewVs2       = document.getElementById('preview-vs-2');
+const previewC         = document.getElementById('preview-c');
+const menuLayout       = document.getElementById('menu-layout');
+const modeStandardBtn  = document.getElementById('mode-standard');
+const modeTripleBtn    = document.getElementById('mode-triple');
 const battleLogEl      = document.getElementById('battle-log');
 const scenarioSelect   = document.getElementById('scenario-select');
 
@@ -79,7 +89,9 @@ function updateBattleUI(g) {
 
 function setupMenu(roster) {
   ROSTER = roster;
-  renderCharacterList('A'); renderCharacterList('B');
+  renderCharacterList('A'); 
+  renderCharacterList('B');
+  renderCharacterList('C');
   updatePreview(); updateStartButton();
 }
 
@@ -89,7 +101,10 @@ function renderCharacterList(player) {
   ROSTER.forEach(char => {
     const card = document.createElement('div');
     card.className = 'character-card';
-    const selected = (player === 'A' && selectionA === char.id) || (player === 'B' && selectionB === char.id);
+    let selected = false;
+    if (player === 'A') selected = selectionA === char.id;
+    else if (player === 'B') selected = selectionB === char.id;
+    else if (player === 'C') selected = selectionC === char.id;
     if (selected) card.classList.add('selected-' + player.toLowerCase());
     card.innerHTML = '<div class="char-icon" style="background:' + char.color + '"></div><div class="char-info"><div class="char-name">' + char.name + '</div><div class="char-stats">HP: ' + char.hp + ' | DMG: ' + char.damage + ' | SPD: ' + char.speed + '</div></div>';
     card.addEventListener('click', () => { Sound.init(); selectCharacter(player, char.id); });
@@ -98,14 +113,19 @@ function renderCharacterList(player) {
 }
 
 function selectCharacter(player, charId) {
-  if (player === 'A') selectionA = charId; else selectionB = charId;
-  renderCharacterList('A'); renderCharacterList('B');
+  if (player === 'A') selectionA = charId;
+  else if (player === 'B') selectionB = charId;
+  else if (player === 'C') selectionC = charId;
+  renderCharacterList('A'); renderCharacterList('B'); renderCharacterList('C');
   updatePreview(); updateStartButton();
 }
 
 function updatePreview() {
   updatePreviewSlot(document.getElementById('preview-a'), selectionA);
   updatePreviewSlot(document.getElementById('preview-b'), selectionB);
+  if (gameMode === 'triple') {
+    updatePreviewSlot(document.getElementById('preview-c'), selectionC);
+  }
 }
 
 function updatePreviewSlot(el, charId) {
@@ -120,8 +140,17 @@ function updatePreviewSlot(el, charId) {
 }
 
 function updateStartButton() {
-  if (selectionA && selectionB) { startBtn.classList.add('enabled'); startBtn.disabled = false; startBtn.textContent = 'Start Battle'; }
-  else { startBtn.classList.remove('enabled'); startBtn.disabled = true; startBtn.textContent = 'Select Both Fighters'; }
+  let ready = false;
+  let text = 'Select Fighters';
+  if (gameMode === 'standard') {
+    ready = selectionA && selectionB;
+    text = ready ? 'Start Battle' : 'Select Both Fighters';
+  } else {
+    ready = selectionA && selectionB && selectionC;
+    text = ready ? 'Start Triple Threat' : 'Select All 3 Fighters';
+  }
+  if (ready) { startBtn.classList.add('enabled'); startBtn.disabled = false; startBtn.textContent = text; }
+  else { startBtn.classList.remove('enabled'); startBtn.disabled = true; startBtn.textContent = text; }
 }
 
 document.querySelectorAll('.btn-random').forEach(btn => {
@@ -131,6 +160,32 @@ document.querySelectorAll('.btn-random').forEach(btn => {
     const randomChar = ROSTER[Math.floor(Math.random() * ROSTER.length)];
     selectCharacter(player, randomChar.id);
   });
+});
+
+modeStandardBtn.addEventListener('click', () => {
+  gameMode = 'standard';
+  modeStandardBtn.classList.add('active');
+  modeTripleBtn.classList.remove('active');
+  panelC.style.display = 'none';
+  previewVs2.style.display = 'none';
+  previewC.style.display = 'none';
+  battleVs2.style.display = 'none';
+  battleNameC.style.display = 'none';
+  menuLayout.classList.remove('triple');
+  updateStartButton();
+});
+
+modeTripleBtn.addEventListener('click', () => {
+  gameMode = 'triple';
+  modeStandardBtn.classList.remove('active');
+  modeTripleBtn.classList.add('active');
+  panelC.style.display = 'block';
+  previewVs2.style.display = 'block';
+  previewC.style.display = 'flex';
+  battleVs2.style.display = 'inline';
+  battleNameC.style.display = 'inline';
+  menuLayout.classList.add('triple');
+  updateStartButton();
 });
 
 function showScreen(name) {
@@ -161,11 +216,15 @@ function runCountdown(onComplete) {
 function startBattle() {
   const charA = ROSTER.find(c => c.id === selectionA);
   const charB = ROSTER.find(c => c.id === selectionB);
+  const charC = gameMode === 'triple' ? ROSTER.find(c => c.id === selectionC) : null;
   const scenario = scenarioSelect.value;
+  
   battleNameA.textContent = charA.name; battleNameA.style.color = charA.color;
   battleNameB.textContent = charB.name; battleNameB.style.color = charB.color;
+  if (charC) { battleNameC.textContent = charC.name; battleNameC.style.color = charC.color; }
+  
   showScreen('battle'); clearBattleLog();
-  game = new Game(canvas, charA, charB, scenario);
+  game = new Game(canvas, charA, charB, scenario, gameMode, charC);
   game.onGameOver = handleGameOver;
   game.onLog = (text) => addLogEntry(text);
   game.draw();
@@ -185,6 +244,6 @@ function handleGameOver(winner, stats) {
 function rematch() { winnerOverlay.classList.remove('active'); startBattle(); }
 function backToMenu() { winnerOverlay.classList.remove('active'); showScreen('menu'); }
 
-startBtn.addEventListener('click', () => { if (selectionA && selectionB) { Sound.init(); startBattle(); } });
+startBtn.addEventListener('click', () => { if (startBtn.disabled === false) { Sound.init(); startBattle(); } });
 rematchBtn.addEventListener('click', rematch);
 charselectBtn.addEventListener('click', backToMenu);

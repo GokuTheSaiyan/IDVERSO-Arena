@@ -1,8 +1,27 @@
 /* ===== SIMPLE FLASH-ERA STYLING ===== */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* ===== CUSTOM FONT SUPPORT ===== */
+@font-face {
+    font-family: 'IDVERSOFont';
+    src: url('../fonts/main.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap; /* Prevents invisible text during load */
+}
+
+:root {
+  /* ~1.5px crisp black outline for readability */
+  --text-outline: 
+    -1px -1px 0 #000, 0 -1px 0 #000, 1px -1px 0 #000,
+    -1px  0   0 #000, 1px  0   0 #000,
+    -1px  1px 0 #000, 0  1px 0 #000, 1px  1px 0 #000,
+    -2px  0   0 #000, 2px  0   0 #000,
+    0 -2px 0 #000, 0  2px 0 #000;
+}
+
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'IDVERSOFont', Arial, Helvetica, sans-serif;
   background: #2b2b2b;
   color: #ffffff;
   min-height: 100vh;
@@ -10,6 +29,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 20px;
+  letter-spacing: 2px; /* Increased global letter spacing */
 }
 
 #app {
@@ -24,24 +44,72 @@ body {
 /* ===== MENU SCREEN ===== */
 .menu-title {
   text-align: center;
-  font-size: 36px;
+  font-size: 40px; /* Increased font size */
   font-weight: bold;
-  margin-bottom: 30px;
-  letter-spacing: 2px;
+  margin-bottom: 20px;
+  letter-spacing: 4px; /* Increased letter spacing */
   text-transform: uppercase;
   color: #ffffff;
+  text-shadow: var(--text-outline);
 }
+
+.mode-selector {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+.mode-label {
+  font-size: 16px; /* Increased font size */
+  margin-bottom: 10px;
+  color: #ccc;
+  text-transform: uppercase;
+  letter-spacing: 2px; /* Increased letter spacing */
+  text-shadow: var(--text-outline);
+}
+
+.mode-btn {
+  padding: 8px 16px;
+  font-size: 14px; /* Increased font size */
+  font-weight: bold;
+  text-transform: uppercase;
+  border: 2px solid #1a1a1a;
+  background: #4a4a4a;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  margin: 0 5px;
+  text-shadow: var(--text-outline);
+  letter-spacing: 2px; /* Added explicit spacing */
+}
+
+.mode-btn:hover { background: #5a5a5a; }
+.mode-btn.active { background: #44aa44; border-color: #1a1a1a; }
 
 .menu-layout {
   display: grid;
   grid-template-columns: 1fr 0.9fr 1fr;
+  grid-template-areas: 
+    "p-a preview p-b";
   gap: 15px;
   margin-bottom: 25px;
+  align-items: start;
 }
 
+.menu-layout.triple {
+  grid-template-areas: 
+    "p-a preview p-b"
+    "p-c preview .";
+}
+
+.player-a { grid-area: p-a; }
+.player-b { grid-area: p-b; }
+.player-c { grid-area: p-c; }
+.preview-panel { grid-area: preview; }
+
 @media (max-width: 750px) {
-  .menu-layout {
-    grid-template-columns: 1fr;
+  .menu-layout, .menu-layout.triple {
+    display: flex;
+    flex-direction: column;
   }
 }
 
@@ -59,16 +127,19 @@ body {
 }
 
 .player-panel h2 {
-  font-size: 18px;
+  font-size: 20px; /* Increased font size */
   text-transform: uppercase;
+  text-shadow: var(--text-outline);
+  letter-spacing: 3px; /* Increased letter spacing */
 }
 
 .player-a h2 { color: #ff5555; }
 .player-b h2 { color: #5555ff; }
+.player-c h2 { color: #ffaa00; }
 
 .btn-random {
   padding: 4px 12px;
-  font-size: 11px;
+  font-size: 12px; /* Increased font size */
   font-weight: bold;
   text-transform: uppercase;
   border: 2px solid #1a1a1a;
@@ -76,6 +147,8 @@ body {
   color: #fff;
   cursor: pointer;
   font-family: inherit;
+  text-shadow: var(--text-outline);
+  letter-spacing: 1px;
 }
 
 .btn-random:hover { background: #777; }
@@ -109,6 +182,11 @@ body {
   background: #38385a;
 }
 
+.character-card.selected-c {
+  border-color: #ffaa00;
+  background: #5a4a20;
+}
+
 .char-icon {
   width: 36px;
   height: 36px;
@@ -117,8 +195,19 @@ body {
 }
 
 .char-info { flex: 1; }
-.char-name { font-weight: bold; font-size: 14px; }
-.char-stats { font-size: 11px; color: #bbb; margin-top: 2px; }
+.char-name { 
+  font-weight: bold; 
+  font-size: 16px; /* Increased font size */
+  text-shadow: var(--text-outline);
+  letter-spacing: 2px; /* Increased letter spacing */
+}
+.char-stats { 
+  font-size: 12px; /* Increased font size */
+  color: #bbb; 
+  margin-top: 2px; 
+  text-shadow: var(--text-outline);
+  letter-spacing: 1px;
+}
 
 /* ===== PREVIEW PANEL ===== */
 .preview-panel {
@@ -132,10 +221,12 @@ body {
 }
 
 .preview-panel h2 {
-  font-size: 14px;
+  font-size: 16px; /* Increased font size */
   margin-bottom: 15px;
   text-transform: uppercase;
   color: #ccc;
+  text-shadow: var(--text-outline);
+  letter-spacing: 2px;
 }
 
 .preview-fighter {
@@ -157,7 +248,8 @@ body {
 
 .preview-placeholder {
   color: #777;
-  font-size: 12px;
+  font-size: 14px; /* Increased font size */
+  text-shadow: var(--text-outline);
 }
 
 .preview-color {
@@ -169,21 +261,27 @@ body {
 
 .preview-name {
   font-weight: bold;
-  font-size: 14px;
+  font-size: 16px; /* Increased font size */
+  text-shadow: var(--text-outline);
+  letter-spacing: 2px; /* Increased letter spacing */
 }
 
 .preview-stats {
-  font-size: 10px;
+  font-size: 12px; /* Increased font size */
   color: #aaa;
   margin-top: 4px;
   text-align: center;
+  text-shadow: var(--text-outline);
+  letter-spacing: 1px;
 }
 
 .preview-vs {
-  font-size: 28px;
+  font-size: 32px; /* Increased font size */
   font-weight: bold;
   margin: 12px 0;
   color: #fff;
+  text-shadow: var(--text-outline);
+  letter-spacing: 2px;
 }
 
 .scenario-selector {
@@ -194,9 +292,11 @@ body {
 
 .scenario-selector label {
   display: block;
-  font-size: 12px;
+  font-size: 14px; /* Increased font size */
   margin-bottom: 5px;
   color: #ccc;
+  text-shadow: var(--text-outline);
+  letter-spacing: 1px;
 }
 
 .scenario-selector select {
@@ -206,7 +306,7 @@ body {
   color: #fff;
   border: 2px solid #1a1a1a;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 14px; /* Increased font size */
 }
 
 /* ===== START BUTTON ===== */
@@ -214,7 +314,7 @@ body {
   display: block;
   margin: 0 auto;
   padding: 15px 60px;
-  font-size: 20px;
+  font-size: 22px; /* Increased font size */
   font-weight: bold;
   text-transform: uppercase;
   border: 3px solid #1a1a1a;
@@ -222,6 +322,8 @@ body {
   color: #999;
   cursor: not-allowed;
   font-family: inherit;
+  text-shadow: var(--text-outline);
+  letter-spacing: 3px; /* Increased letter spacing */
 }
 
 .start-btn.enabled {
@@ -241,13 +343,16 @@ body {
   align-items: center;
   gap: 20px;
   margin-bottom: 12px;
-  font-size: 20px;
+  font-size: 24px; /* Increased font size */
   font-weight: bold;
+  letter-spacing: 2px; /* Increased letter spacing */
+  text-shadow: var(--text-outline);
 }
 
 .battle-header .vs-label {
   color: #888;
-  font-size: 16px;
+  font-size: 18px; /* Increased font size */
+  text-shadow: var(--text-outline);
 }
 
 .battle-content {
@@ -255,6 +360,7 @@ body {
   gap: 15px;
   justify-content: center;
   align-items: flex-start;
+  flex-wrap: nowrap; /* Prevents UI from falling below arena on large screens */
 }
 
 canvas {
@@ -263,6 +369,7 @@ canvas {
   display: block;
   max-width: 100%;
   height: auto;
+  flex-shrink: 1;
 }
 
 /* ===== BATTLE LOG PANEL ===== */
@@ -271,7 +378,7 @@ canvas {
   height: 700px;
   background: #3a3a3a;
   border: 3px solid #1a1a1a;
-  flex-shrink: 0;
+  flex-shrink: 0; /* Prevents the log panel from shrinking */
   text-align: left;
   display: flex;
   flex-direction: column;
@@ -290,19 +397,21 @@ canvas {
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
-  font-size: 11px;
+  font-size: 13px; /* Increased font size */
   font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 1px; /* Increased letter spacing for monospace */
 }
 .stat-row:last-child { margin-bottom: 0; }
 
 .stat-name {
-  width: 90px;
+  width: 120px; /* Slightly increased to prevent truncation from larger font */
   color: #fff;
   font-weight: bold;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: var(--text-outline);
 }
 
 .stat-bar-bg {
@@ -319,9 +428,10 @@ canvas {
 }
 
 .stat-val {
-  width: 40px;
+  width: 45px; /* Slightly increased to fit larger numbers */
   text-align: right;
   color: #ddd;
+  text-shadow: var(--text-outline);
 }
 
 .battle-log-title {
@@ -329,11 +439,12 @@ canvas {
   padding: 8px;
   font-weight: bold;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 14px; /* Increased font size */
   border-bottom: 2px solid #1a1a1a;
   text-align: center;
-  letter-spacing: 1px;
+  letter-spacing: 2px; /* Increased letter spacing */
   flex-shrink: 0;
+  text-shadow: var(--text-outline);
 }
 
 .battle-log {
@@ -341,7 +452,7 @@ canvas {
   min-height: 0;
   overflow-y: auto;
   padding: 8px;
-  font-size: 11px;
+  font-size: 13px; /* Increased font size */
   line-height: 1.6;
   font-family: 'Courier New', Courier, monospace;
 }
@@ -349,10 +460,12 @@ canvas {
 .battle-log-entry {
   margin-bottom: 2px;
   color: #ddd;
-  word-wrap: break-word;
+  word-wrap: break-word; /* Ensures text wraps correctly */
+  text-shadow: var(--text-outline);
 }
 
-@media (max-width: 1050px) {
+/* Lowered media query threshold to prevent premature wrapping */
+@media (max-width: 1000px) {
   .battle-content {
     flex-direction: column;
     align-items: center;
@@ -379,11 +492,13 @@ canvas {
 .countdown-overlay.active { display: flex; }
 
 .countdown-number {
-  font-size: 120px;
+  font-size: 140px; /* Increased font size */
   font-weight: bold;
   color: #ffffff;
   transform: scale(0.6);
   transition: transform 0.25s ease-out;
+  text-shadow: var(--text-outline);
+  letter-spacing: 4px; /* Increased letter spacing */
 }
 
 .countdown-number.show { transform: scale(1); }
@@ -410,17 +525,20 @@ canvas {
 }
 
 .winner-label {
-  font-size: 18px;
+  font-size: 20px; /* Increased font size */
   color: #aaa;
   text-transform: uppercase;
-  letter-spacing: 3px;
+  letter-spacing: 4px; /* Increased letter spacing */
   margin-bottom: 10px;
+  text-shadow: var(--text-outline);
 }
 
 .winner-name {
-  font-size: 48px;
+  font-size: 56px; /* Increased font size */
   font-weight: bold;
   margin-bottom: 20px;
+  letter-spacing: 4px; /* Increased letter spacing */
+  text-shadow: var(--text-outline);
 }
 
 .winner-stats {
@@ -431,16 +549,18 @@ canvas {
 }
 
 .winner-stat .k {
-  font-size: 11px;
+  font-size: 13px; /* Increased font size */
   color: #aaa;
   text-transform: uppercase;
+  text-shadow: var(--text-outline);
 }
 
 .winner-stat .v {
-  font-size: 24px;
+  font-size: 28px; /* Increased font size */
   font-weight: bold;
   color: #fff;
   margin-top: 4px;
+  text-shadow: var(--text-outline);
 }
 
 .winner-buttons {
@@ -451,7 +571,7 @@ canvas {
 
 .btn {
   padding: 12px 28px;
-  font-size: 14px;
+  font-size: 16px; /* Increased font size */
   font-weight: bold;
   text-transform: uppercase;
   border: 3px solid #1a1a1a;
@@ -459,6 +579,8 @@ canvas {
   color: #fff;
   cursor: pointer;
   font-family: inherit;
+  text-shadow: var(--text-outline);
+  letter-spacing: 2px; /* Added explicit spacing */
 }
 
 .btn:hover { background: #777; }
