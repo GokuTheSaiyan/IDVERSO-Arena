@@ -30,3 +30,9 @@ Expected files:
 - heavy_parry.wav
 - parry_heal.wav
 - protection_break.wav
+- beam_charge.wav
+- beam_fire.wav
+- beam_hit.wav
+- last_stand_start.wav
+- last_stand_explosion.wav
+- last_stand_loop.wav

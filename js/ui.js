@@ -51,14 +51,15 @@ function updateBattleUI(g) {
   let detHtml = '';
 
   g.fighters.forEach(f => {
-    // Determination Protection UI
     if (f.character.abilities && f.character.abilities.determination && f.maxProtection > 0) {
       const protPct = Math.max(0, (f.protection / f.maxProtection) * 100);
       hpHtml += '<div class="stat-row"><div class="stat-name" style="color: #ff0000;">' + f.name + ' Prot</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + protPct + '%; background: #ff0000;"></div></div><div class="stat-val" style="color: #ff0000;">' + Math.round(protPct) + '%</div></div>';
     }
     
     const hpPct = Math.max(0, (f.hp / f.maxHp) * 100);
-    hpHtml += '<div class="stat-row"><div class="stat-name">' + f.name + ' HP</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + hpPct + '%; background:' + f.color + '"></div></div><div class="stat-val">' + Math.round(hpPct) + '%</div></div>';
+    let hpName = f.name + ' HP';
+    if (f.lastStandActive) hpName = f.name + ' [LS] HP';
+    hpHtml += '<div class="stat-row"><div class="stat-name">' + hpName + '</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + hpPct + '%; background:' + f.color + '"></div></div><div class="stat-val">' + Math.round(hpPct) + '%</div></div>';
 
     if (f.character.abilities && f.character.abilities.determination) {
       const detPct = f.determination;
@@ -74,6 +75,7 @@ function updateBattleUI(g) {
       const hatePct = f.hate;
       let hateLabel = 'Hate Meter';
       if (f.hateUnlocked) hateLabel = 'Hate Meter (Unlocked)';
+      if (f.lastStandActive) hateLabel = 'Hate Meter (Locked)';
       detHtml += '<div class="stat-row"><div class="stat-name" style="color:#dddddd">' + f.name + ' ' + hateLabel + '</div><div class="stat-bar-bg" style="border:1px solid #555;"><div class="stat-bar-fill" style="width:' + hatePct + '%; background:#000000; border-right: 1px solid #444;"></div></div><div class="stat-val" style="color:#dddddd">' + Math.round(hatePct) + '%</div></div>';
     }
 
@@ -249,8 +251,17 @@ function handleGameOver(winner, stats) {
   }, 500);
 }
 
-function rematch() { winnerOverlay.classList.remove('active'); startBattle(); }
-function backToMenu() { winnerOverlay.classList.remove('active'); showScreen('menu'); }
+function rematch() {
+  Sound.stopAll(); // Safety audio cleanup
+  winnerOverlay.classList.remove('active');
+  startBattle();
+}
+
+function backToMenu() {
+  Sound.stopAll(); // Safety audio cleanup
+  winnerOverlay.classList.remove('active');
+  showScreen('menu');
+}
 
 startBtn.addEventListener('click', () => { if (startBtn.disabled === false) { Sound.init(); startBattle(); } });
 rematchBtn.addEventListener('click', rematch);

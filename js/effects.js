@@ -43,13 +43,10 @@ class DamageNumber {
     ctx.font = "bold 20px 'IDVERSOFont', Arial, sans-serif";
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const text = typeof this.value === 'number' ? '-' + this.value : this.value;
-    
-    // 1.5px Black Outline
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = '#000000';
     ctx.lineJoin = 'round';
     ctx.strokeText(text, this.x, this.y);
-    
     ctx.fillStyle = this.color;
     ctx.fillText(text, this.x, this.y);
     ctx.globalAlpha = 1;
@@ -63,20 +60,17 @@ class CombatText {
   constructor(x, y, type) {
     this.x = x;
     this.y = y;
-    this.type = type; // 'parry', 'blocked', 'hit', 'critical'
+    this.type = type;
     this.life = 0.8;
     this.maxLife = 0.8;
     this.vy = -40;
     this.scale = 1.3;
     this.sprite = CombatText.sprites[type] || null;
   }
-
   update(dt) {
     this.y += this.vy * dt;
     this.vy *= 0.96;
     this.life -= dt;
-    
-    // Pop-in effect
     const elapsed = this.maxLife - this.life;
     if (elapsed < 0.15) {
       this.scale = 1.3 - (0.3 * (elapsed / 0.15));
@@ -84,22 +78,17 @@ class CombatText {
       this.scale = 1.0;
     }
   }
-
   draw(ctx) {
     let alpha = 1.0;
-    // Fade out in the last 0.3 seconds
     if (this.life < 0.3) {
       alpha = this.life / 0.3;
     }
-    
     ctx.globalAlpha = Math.max(0, alpha);
-    
     if (this.sprite) {
       const w = this.sprite.width * this.scale;
       const h = this.sprite.height * this.scale;
       ctx.drawImage(this.sprite, this.x - w/2, this.y - h/2, w, h);
     } else {
-      // Fallback text
       ctx.font = "bold 24px 'IDVERSOFont', Arial, sans-serif";
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -108,7 +97,6 @@ class CombatText {
       ctx.lineJoin = 'round';
       const text = this.type.toUpperCase() + '!';
       ctx.strokeText(text, this.x, this.y);
-      
       let color = '#ffffff';
       if (this.type === 'blocked') color = '#ff0000';
       else if (this.type === 'hit') color = '#ffaa00';
@@ -180,68 +168,174 @@ class VoidBeam {
     this.x = x; this.y = y;
     this.angle = angle;
     this.owner = owner;
-    
-    // Total lifetime is 0.8s
-    this.totalLife = 0.8;
     this.life = 0.8;
-    
-    // Phase durations
-    this.expandTime = 0.2;   // 0.0s to 0.2s
-    this.activeTime = 0.3;   // 0.2s to 0.5s (Hitbox active)
-    this.collapseTime = 0.3; // 0.5s to 0.8s (Visual only)
-    
-    this.damage = 20; // Unchanged
-    this.knockback = 600; // Unchanged
-    this.baseWidth = 90; 
+    this.maxLife = 0.8;
+    this.damage = 20;
+    this.knockback = 600;
+    this.baseWidth = 90;
     this.hitTargets = new Set();
   }
-  
   isHitboxActive() {
-    const elapsed = this.totalLife - this.life;
-    return elapsed < (this.expandTime + this.activeTime);
+    const elapsed = this.maxLife - this.life;
+    return elapsed < 0.5;
   }
-  
   update(dt) {
     this.life -= dt;
   }
-  
   draw(ctx) {
-    const elapsed = this.totalLife - this.life;
+    const elapsed = this.maxLife - this.life;
     let currentWidth = 0;
     let alpha = 0.9;
-    
-    if (elapsed < this.expandTime) {
-      // Phase 1: Expand rapidly
-      const t = elapsed / this.expandTime;
+    if (elapsed < 0.2) {
+      const t = elapsed / 0.2;
       currentWidth = 10 + (this.baseWidth * 1.5 - 10) * t;
-    } else if (elapsed < this.expandTime + this.activeTime) {
-      // Phase 2: Active, settle back down to normal width
-      const t = (elapsed - this.expandTime) / this.activeTime;
+    } else if (elapsed < 0.5) {
+      const t = (elapsed - 0.2) / 0.3;
       currentWidth = this.baseWidth * 1.5 - (this.baseWidth * 0.5 * t);
     } else {
-      // Phase 3: Collapse and fade out
-      const t = (elapsed - (this.expandTime + this.activeTime)) / this.collapseTime;
+      const t = (elapsed - 0.5) / 0.3;
       currentWidth = this.baseWidth * (1 - t);
       alpha = 0.9 * (1 - t);
     }
-    
-    // Clamp values
     currentWidth = Math.max(0, currentWidth);
     alpha = Math.max(0, alpha);
-    
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
     ctx.globalAlpha = alpha;
-    
-    // Outer Purple
     ctx.fillStyle = '#4b0082';
     ctx.fillRect(0, -currentWidth/2, 1500, currentWidth);
-    
-    // Inner Black Core
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, -currentWidth/4, 1500, currentWidth/2);
-    
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ============================================================
+//  CLASS: SliceWarning
+// ============================================================
+class SliceWarning {
+  constructor(x, y, angle, owner, duration) {
+    this.x = x;
+    this.y = y;
+    this.angle = angle;
+    this.owner = owner;
+    this.life = duration;
+    this.maxLife = duration;
+    this.flashTimer = 0;
+    this.spawned = false;
+  }
+  update(dt, game) {
+    if (this.spawned) return;
+    this.life -= dt;
+    this.flashTimer += dt;
+    if (this.life <= 0) {
+      this.spawned = true;
+      game.spawnSlice(this.owner, this.x, this.y, this.angle);
+      const angleDeg = Math.round(this.angle * 180 / Math.PI);
+      game.log(`Slice executed at ${angleDeg}°.`);
+      Sound.sliceAttack(this.owner.character.assetFolder);
+    }
+  }
+  draw(ctx) {
+    if (this.spawned) return;
+    const flashSpeed = 10;
+    const flashVal = Math.floor(this.flashTimer * flashSpeed) % 2;
+    const color = flashVal === 0 ? '#ff0000' : '#ffff00';
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    // Offset rotation by -PI/2 so the exclamation mark visually aligns with the horizontal slice direction
+    ctx.rotate(this.angle - Math.PI / 2);
+    ctx.font = "bold 56px 'IDVERSOFont', Arial, sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    // Draw only ONE exclamation mark
+    ctx.strokeText('!', 0, 0);
+    ctx.fillText('!', 0, 0);
+    ctx.restore();
+  }
+}
+
+// ============================================================
+//  CLASS: SliceAttack
+// ============================================================
+class SliceAttack {
+  constructor(x, y, angle, arenaSize, owner) {
+    this.x = x;
+    this.y = y;
+    this.angle = angle;
+    this.owner = owner;
+    // Calculate length using 10x the arena diagonal to guarantee no clipping at any angle
+    const arenaDiagonal = arenaSize * Math.SQRT2;
+    this.length = arenaDiagonal * 10; 
+    this.baseWidth = 60; // Increased width noticeably
+    this.damage = 8;
+    this.knockback = 300;
+    this.totalLife = 0.6;
+    this.life = 0.6;
+    this.expandTime = 0.1;
+    this.activeTime = 0.2;
+    this.collapseTime = 0.3;
+    this.hitTargets = new Set();
+  }
+  isHitboxActive() {
+    const elapsed = this.totalLife - this.life;
+    return elapsed < (this.expandTime + this.activeTime);
+  }
+  update(dt) {
+    this.life -= dt;
+  }
+  checkHit(target) {
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const cos = Math.cos(-this.angle);
+    const sin = Math.sin(-this.angle);
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+    return Math.abs(localX) < this.length / 2 && Math.abs(localY) < this.baseWidth / 2 + target.radius;
+  }
+  getKnockback(target) {
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const sin = Math.sin(this.angle);
+    const cos = Math.cos(this.angle);
+    const localY = dx * sin + dy * cos;
+    const side = localY > 0 ? 1 : -1;
+    return {
+      vx: -sin * side * this.knockback,
+      vy: cos * side * this.knockback
+    };
+  }
+  draw(ctx) {
+    const elapsed = this.totalLife - this.life;
+    let currentWidth = 0;
+    let alpha = 1.0;
+    if (elapsed < this.expandTime) {
+      const t = elapsed / this.expandTime;
+      currentWidth = this.baseWidth * t;
+    } else if (elapsed < this.expandTime + this.activeTime) {
+      currentWidth = this.baseWidth;
+    } else {
+      const t = (elapsed - (this.expandTime + this.activeTime)) / this.collapseTime;
+      currentWidth = this.baseWidth * (1 - t);
+      alpha = 1.0 - t;
+    }
+    currentWidth = Math.max(0, currentWidth);
+    alpha = Math.max(0, alpha);
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(-this.length / 2, -currentWidth / 2, this.length, currentWidth);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-this.length / 2, -currentWidth / 2, this.length, currentWidth);
     ctx.restore();
     ctx.globalAlpha = 1;
   }
@@ -261,13 +355,13 @@ class Summon {
       this.radius = 18;
       this.speed = 275;
       this.damage = 2;
-      this.hp = 1; // Defeated in 1 hit
+      this.hp = 1;
       this.maxHp = 1;
     } else {
       this.radius = 36;
       this.speed = 200;
       this.damage = 3;
-      this.hp = 2; // Defeated in 2 hits
+      this.hp = 2;
       this.maxHp = 2;
     }
     this.alive = true;
@@ -276,10 +370,8 @@ class Summon {
     this.vx = Math.cos(angle) * this.speed;
     this.vy = Math.sin(angle) * this.speed;
   }
-
   update(dt, arena) {
     if (!this.alive) return;
-
     if (this.target && this.target.alive) {
       const dx = this.target.x - this.x;
       const dy = this.target.y - this.y;
@@ -290,7 +382,6 @@ class Summon {
         this.vy += (dy / dist) * steerForce * dt;
       }
     }
-
     const m = Math.hypot(this.vx, this.vy);
     if (m > 0.001) {
       this.vx = (this.vx / m) * this.speed;
@@ -300,24 +391,19 @@ class Summon {
       this.vx = Math.cos(angle) * this.speed;
       this.vy = Math.sin(angle) * this.speed;
     }
-
     this.x += this.vx * dt;
     this.y += this.vy * dt;
-
     if (this.x - this.radius < arena.x) { this.x = arena.x + this.radius; this.vx = Math.abs(this.vx); }
     if (this.x + this.radius > arena.x + arena.size) { this.x = arena.x + arena.size - this.radius; this.vx = -Math.abs(this.vx); }
     if (this.y - this.radius < arena.y) { this.y = arena.y + this.radius; this.vy = Math.abs(this.vy); }
     if (this.y + this.radius > arena.y + arena.size) { this.y = arena.y + arena.size - this.radius; this.vy = -Math.abs(this.vy); }
-
     if (this.flashTime > 0) this.flashTime -= dt;
   }
-
   takeDamage(amount) {
     this.hp -= amount;
     this.flashTime = 0.15;
     if (this.hp <= 0) this.alive = false;
   }
-
   draw(ctx) {
     if (!this.alive) return;
     ctx.fillStyle = this.flashTime > 0 ? '#ffffff' : this.color;

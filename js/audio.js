@@ -6,6 +6,9 @@ class AudioManager {
     this.ctx = null;
     this.cache = {};
     this.rushChargeOsc = null;
+    this.loopSounds = {};
+    this.currentMusic = null;
+    this.activeSounds = [];
   }
 
   init() {
@@ -43,6 +46,10 @@ class AudioManager {
       const sound = this.cache[url].cloneNode();
       sound.volume = 0.5;
       sound.play().catch(() => {});
+      this.activeSounds.push(sound);
+      sound.onended = () => {
+        this.activeSounds = this.activeSounds.filter(s => s !== sound);
+      };
       return true;
     }
     return false;
@@ -62,6 +69,46 @@ class AudioManager {
       played = this.playSound(globalUrl);
     }
     if (!played && fallbackTone) fallbackTone();
+  }
+
+  async playMusic(action, charFolder = null, fallback = null) {
+    if (!this.ctx) return;
+    let url = charFolder ? `audio/${charFolder}/${action}.mp3` : `audio/global/${action}.mp3`;
+    if (this.cache[url] === undefined) await this.loadSound(url);
+    if (this.cache[url]) {
+      if (this.currentMusic) this.currentMusic.pause();
+      this.currentMusic = this.cache[url].cloneNode();
+      this.currentMusic.loop = true;
+      this.currentMusic.volume = 0.4;
+      this.currentMusic.play().catch(() => {});
+    } else if (fallback) {
+      fallback();
+    }
+  }
+
+  stopMusic() {
+    if (this.currentMusic) {
+      this.currentMusic.pause();
+      this.currentMusic = null;
+    }
+  }
+
+  stopAll() {
+    this.stopMusic();
+    Object.keys(this.loopSounds).forEach(key => {
+      if (this.loopSounds[key]) {
+        this.loopSounds[key].pause();
+        this.loopSounds[key] = null;
+      }
+    });
+    if (this.rushChargeOsc) {
+      try { this.rushChargeOsc.stop(); } catch(e) {}
+      this.rushChargeOsc = null;
+    }
+    this.activeSounds.forEach(s => {
+      try { s.pause(); s.currentTime = 0; } catch(e) {}
+    });
+    this.activeSounds = [];
   }
 
   hit() { this.play('hit', null, () => this.playTone(120, 0.04, 'sawtooth', 0.1)); }
@@ -285,7 +332,7 @@ class AudioManager {
       setTimeout(() => this.playTone(100, 0.4, 'sawtooth', 0.15), 100);
     });
   }
-  
+
   beamCharge(charFolder) {
     this.play('beam_charge', charFolder, () => {
       if (!this.ctx) return;
@@ -326,6 +373,67 @@ class AudioManager {
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
       osc.connect(gain); gain.connect(this.ctx.destination);
       osc.start(); osc.stop(this.ctx.currentTime + 0.3);
+    });
+  }
+
+  lastStandStart(charFolder) {
+    this.play('last_stand_start', charFolder, () => {
+      this.playTone(60, 1.5, 'sawtooth', 0.2);
+      setTimeout(() => this.playTone(40, 2.0, 'sawtooth', 0.2), 200);
+    });
+  }
+  lastStandExplosion(charFolder) {
+    this.play('last_stand_explosion', charFolder, () => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.8);
+      gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.8);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.8);
+    });
+  }
+  lastStandLoopStart(charFolder) {
+    if (!this.ctx) return;
+    const url = charFolder ? `audio/${charFolder}/last_stand_loop.wav` : `audio/global/last_stand_loop.wav`;
+    if (this.cache[url] && !this.loopSounds[url]) {
+      const sound = this.cache[url].cloneNode();
+      sound.loop = true;
+      sound.volume = 0.15;
+      sound.play().catch(() => {});
+      this.loopSounds[url] = sound;
+    }
+  }
+  lastStandLoopStop(charFolder) {
+    const url = charFolder ? `audio/${charFolder}/last_stand_loop.wav` : `audio/global/last_stand_loop.wav`;
+    if (this.loopSounds[url]) {
+      this.loopSounds[url].pause();
+      this.loopSounds[url] = null;
+    }
+  }
+
+  sliceWarning(charFolder) {
+    this.play('slice_warning', charFolder, () => {
+      this.playTone(880, 0.08, 'square', 0.12);
+      setTimeout(() => this.playTone(880, 0.08, 'square', 0.12), 150);
+      setTimeout(() => this.playTone(880, 0.08, 'square', 0.12), 300);
+    });
+  }
+  sliceAttack(charFolder) {
+    this.play('slice_attack', charFolder, () => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1000, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.2);
     });
   }
 

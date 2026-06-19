@@ -65,6 +65,8 @@ class Game {
     this.combatTexts = [];
     this.hateSlashes = [];
     this.voidBeams = [];
+    this.sliceWarnings = [];
+    this.sliceAttacks = [];
     this.summons = [];
     this.summonSpawnTimer = 0;
     this.elapsed = 0;
@@ -74,8 +76,10 @@ class Game {
     this.lastTime = 0;
     this.onGameOver = null;
     this.onLog = null;
+    this.cinematicMode = false;
+    this.cinematicTarget = null;
+    this.cinematicZoom = 1.0;
 
-    // Load Combat Text Sprites
     if (Object.keys(CombatText.sprites).length === 0) {
       const types = ['parry', 'blocked', 'hit', 'critical'];
       types.forEach(type => {
@@ -124,13 +128,16 @@ class Game {
 
   spawnVoidBeam(owner, angle) {
     this.voidBeams.push(new VoidBeam(owner.x, owner.y, angle, owner));
-    // Spawn void particles for firing effect
     for(let i=0; i<20; i++) {
       const spread = (Math.random() - 0.5) * 0.6;
       const a = angle + spread;
       const speed = 200 + Math.random() * 200;
       this.particles.push(new Particle(owner.x, owner.y, Math.cos(a)*speed, Math.sin(a)*speed, '#4b0082', 0.4, 4 + Math.random() * 4));
     }
+  }
+
+  spawnSlice(owner, x, y, angle) {
+    this.sliceAttacks.push(new SliceAttack(x, y, angle, this.arena.size, owner));
   }
 
   spawnRushImpactEffect(x, y, color) {
@@ -145,14 +152,7 @@ class Game {
     for (let i = 0; i < 8; i++) {
       const a = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 40;
-      this.particles.push(new Particle(
-        x, y,
-        Math.cos(a) * speed,
-        Math.sin(a) * speed,
-        '#000000',
-        0.4,
-        3 + Math.random() * 2
-      ));
+      this.particles.push(new Particle(x, y, Math.cos(a) * speed, Math.sin(a) * speed, '#000000', 0.4, 3 + Math.random() * 2));
     }
   }
 
@@ -160,29 +160,22 @@ class Game {
     for (let i = 0; i < 20; i++) {
       const a = Math.random() * Math.PI * 2;
       const speed = 100 + Math.random() * 150;
-      this.particles.push(new Particle(
-        x, y,
-        Math.cos(a) * speed,
-        Math.sin(a) * speed,
-        '#ff0000',
-        0.5,
-        4 + Math.random() * 3
-      ));
+      this.particles.push(new Particle(x, y, Math.cos(a) * speed, Math.sin(a) * speed, '#ff0000', 0.5, 4 + Math.random() * 3));
     }
   }
 
   update(dt) {
     this.elapsed += dt;
+    if (this.cinematicMode) {
+      this.cinematicTarget.update(dt, this.arena, this);
+      return;
+    }
     this.fighters.forEach(f => f.update(dt, this.arena, this));
-    
-    // Check all pairs for collisions
     for (let i = 0; i < this.fighters.length; i++) {
       for (let j = i + 1; j < this.fighters.length; j++) {
         this.resolveCollision(this.fighters[i], this.fighters[j]);
       }
     }
-
-    // Handle Void Portal Spawning
     this.fighters.forEach(f => {
       if (f.voidPortalActive) {
         this.summonSpawnTimer -= dt;
@@ -199,27 +192,58 @@ class Game {
         }
       }
     });
-
-    // Update Summons
     this.summons.forEach(s => s.update(dt, this.arena));
     this.summons = this.summons.filter(s => s.alive);
-    
     this.checkSummonCollisions();
-
     this.particles = this.particles.filter(p => p.life > 0);
     this.particles.forEach(p => p.update(dt));
-
     this.damageNumbers = this.damageNumbers.filter(d => d.life > 0);
     this.damageNumbers.forEach(d => d.update(dt));
-
     this.combatTexts = this.combatTexts.filter(t => t.life > 0);
     this.combatTexts.forEach(t => t.update(dt));
 
+    // Update Slice Warnings
+    this.sliceWarnings.forEach(w => w.update(dt, this));
+    this.sliceWarnings = this.sliceWarnings.filter(w => !w.spawned);
+
+    // Update Slice Attacks
+    this.sliceAttacks.forEach(s => s.update(dt));
+    this.sliceAttacks.forEach(slice => {
+      if (this.cinematicMode) return; // Skip if cinematic started
+      if (slice.isHitboxActive()) {
+        this.fighters.forEach(target => {
+          if (target !== slice.owner && target.alive && !slice.hitTargets.has(target)) {
+            if (slice.checkHit(target)) {
+              slice.hitTargets.add(target);
+              const dmgTaken = target.takeDamage(slice.damage, slice.owner, this);
+              if (dmgTaken) {
+                this.log(`Slice hit ${target.name}.`);
+                Sound.sliceAttack(slice.owner.character.assetFolder);
+                const kb = slice.getKnockback(target);
+                target.vx = kb.vx;
+                target.vy = kb.vy;
+                target.speedBoost = 300;
+                this.damageNumbers.push(new DamageNumber(target.x, target.y, slice.damage, target.color));
+                this.combatTexts.push(new CombatText(target.x, target.y - 20, 'hit'));
+                for (let i=0; i<10; i++) {
+                  const a = Math.random() * Math.PI * 2;
+                  const speed = 100 + Math.random() * 150;
+                  this.particles.push(new Particle(target.x, target.y, Math.cos(a)*speed, Math.sin(a)*speed, '#000000', 0.3, 4 + Math.random() * 3));
+                }
+              } else {
+                this.combatTexts.push(new CombatText(target.x, target.y - 20, 'blocked'));
+              }
+            }
+          }
+        });
+      }
+    });
+    this.sliceAttacks = this.sliceAttacks.filter(s => s.life > 0);
+
     this.hateSlashes = this.hateSlashes.filter(s => s.life > 0);
     this.hateSlashes.forEach(s => {
+      if (this.cinematicMode) return; // Skip if cinematic started
       s.update(dt);
-      
-      // Check vs summons
       let hitSummon = false;
       this.summons.forEach(summon => {
         if (summon.alive && summon.owner !== s.owner && Math.hypot(s.x - summon.x, s.y - summon.y) < summon.radius + 10) {
@@ -231,8 +255,6 @@ class Game {
         }
       });
       if (hitSummon) return;
-
-      // Check vs all fighters
       let hitFighter = false;
       this.fighters.forEach(target => {
         if (!hitFighter && target.alive && target !== s.owner && Math.hypot(s.x - target.x, s.y - target.y) < target.radius + 10) {
@@ -257,16 +279,14 @@ class Game {
         }
       });
       if (hitFighter) return;
-      
       if (s.x < this.arena.x - 50 || s.x > this.arena.x + this.arena.size + 50 || s.y < this.arena.y - 50 || s.y > this.arena.y + this.arena.size + 50) {
         s.life = 0;
       }
     });
 
-    // Update Void Beams
     this.voidBeams.forEach(b => b.update(dt));
     this.voidBeams.forEach(beam => {
-      // Only check hitbox if the beam is in its active phase
+      if (this.cinematicMode) return; // Skip if cinematic started
       if (beam.isHitboxActive()) {
         this.fighters.forEach(target => {
           if (target !== beam.owner && target.alive && !beam.hitTargets.has(target)) {
@@ -276,8 +296,7 @@ class Game {
             const targetAngle = Math.atan2(dy, dx);
             let angleDiff = Math.abs(targetAngle - beam.angle);
             if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-            
-            if (angleDiff < 0.15 && dist < 1200) { 
+            if (angleDiff < 0.15 && dist < 1200) {
               beam.hitTargets.add(target);
               const dmgTaken = target.takeDamage(beam.damage, beam.owner, this);
               if (dmgTaken) {
@@ -303,7 +322,6 @@ class Game {
     });
     this.voidBeams = this.voidBeams.filter(b => b.life > 0);
 
-    // Log Defeats
     this.fighters.forEach(f => {
       if (!f.alive && !f.defeatLogged) {
         f.defeatLogged = true;
@@ -311,21 +329,20 @@ class Game {
       }
     });
 
-    // Check for winner
     const alive = this.fighters.filter(f => f.alive);
     if (this.fighters.length > 1 && alive.length <= 1) {
       this.winner = alive[0] || null;
       this.paused = true;
       this.log(this.winner ? `${this.winner.name} wins.` : 'Match ended in a draw');
+      Sound.stopAll();
       if (this.onGameOver) this.onGameOver(this.winner, { time: this.elapsed, collisions: this.collisions });
     }
   }
 
   checkSummonCollisions() {
+    if (this.cinematicMode) return; // Skip if cinematic started
     this.summons.forEach(s => {
       if (!s.alive) return;
-
-      // Bounce summons off each other
       this.summons.forEach(s2 => {
         if (s !== s2 && s2.alive) {
           const dx = s2.x - s.x;
@@ -346,12 +363,8 @@ class Game {
           }
         }
       });
-
-      // Vs Enemy
       const enemy = s.target;
       if (enemy && enemy.alive && !enemy.voidPortalActive && Math.hypot(s.x - enemy.x, s.y - enemy.y) < s.radius + enemy.radius) {
-        
-        // Itami Parry Interaction
         if (enemy.character.abilities && enemy.character.abilities.parry && Math.random() < 0.15) {
           s.alive = false;
           if (s.type === 'scout') {
@@ -372,7 +385,6 @@ class Game {
           this.combatTexts.push(new CombatText(s.x, s.y - 20, 'parry'));
           return;
         }
-
         const dx = enemy.x - s.x;
         const dy = enemy.y - s.y;
         const dist = Math.max(0.1, Math.hypot(dx, dy));
@@ -382,7 +394,6 @@ class Game {
         s.y -= ny * overlap * 0.5;
         enemy.x += nx * overlap * 0.5;
         enemy.y += ny * overlap * 0.5;
-        
         const dvx = enemy.vx - s.vx;
         const dvy = enemy.vy - s.vy;
         const dot = dvx * nx + dvy * ny;
@@ -392,7 +403,6 @@ class Game {
           enemy.vx -= dot * nx;
           enemy.vy -= dot * ny;
         }
-
         if (enemy.hitCooldown <= 0) {
           const dmgTaken = enemy.takeDamage(s.damage, s.owner, this);
           if (dmgTaken) {
@@ -401,7 +411,6 @@ class Game {
             this.damageNumbers.push(new DamageNumber(enemy.x, enemy.y, s.damage, enemy.color));
             this.combatTexts.push(new CombatText(enemy.x, enemy.y - 20, 'hit'));
             Sound.hit();
-            
             s.takeDamage(1);
             if (!s.alive) this.log(`${s.type} was destroyed.`);
           } else {
@@ -410,8 +419,6 @@ class Game {
           }
         }
       }
-
-      // Vs Sam (Owner) - Absorption
       const owner = s.owner;
       if (owner.alive && !owner.voidPortalActive && Math.hypot(s.x - owner.x, s.y - owner.y) < s.radius + owner.radius) {
         s.alive = false;
@@ -430,14 +437,12 @@ class Game {
   }
 
   resolveCollision(a, b) {
+    if (this.cinematicMode) return; // Skip if cinematic started
     if (!a.alive || !b.alive) return;
-
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const dist = Math.hypot(dx, dy);
     const minDist = a.radius + b.radius;
-
-    // Handle Void Portal Invulnerability (Immovable Object)
     if (a.voidPortalActive || b.voidPortalActive) {
       const sam = a.voidPortalActive ? a : b;
       const other = a.voidPortalActive ? b : a;
@@ -460,7 +465,6 @@ class Game {
       }
       return;
     }
-
     if (dist < minDist) {
       const safeDist = Math.max(0.0001, dist);
       const nx = dx / safeDist;
@@ -468,17 +472,13 @@ class Game {
       const overlap = minDist - safeDist;
       a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
       b.x += nx * overlap / 2; b.y += ny * overlap / 2;
-
       const aIsCharging = a.rushState.startsWith('charging');
       const bIsCharging = b.rushState.startsWith('charging');
       const aIsRushing = a.rushState.startsWith('rushing');
       const bIsRushing = b.rushState.startsWith('rushing');
-
       if (aIsRushing || bIsRushing) {
         const rusher = aIsRushing ? a : b;
         const target = aIsRushing ? b : a;
-
-        // Check for summon collision first
         let hitSummon = false;
         this.summons.forEach(s => {
           if (s.alive && s.owner !== rusher && Math.hypot(s.x - rusher.x, s.y - rusher.y) < s.radius + rusher.radius) {
@@ -493,23 +493,19 @@ class Game {
             hitSummon = true;
           }
         });
-        
         if (hitSummon) {
           rusher.endRush(this, true);
           return;
         }
-
         if (target.character.abilities && target.character.abilities.parry && Math.random() < 0.15) {
           this.log(`${target.name} parried the Rush.`);
           Sound.rushParry();
           this.spawnParryEffect(target.x, target.y);
           this.combatTexts.push(new CombatText(target.x, target.y - 20, 'parry'));
-
           const len = Math.hypot(rusher.vx, rusher.vy);
           target.vx = -rusher.vx / len;
           target.vy = -rusher.vy / len;
           target.speedBoost = 400;
-
           if (target.character.abilities.hate) {
             target.hate += 60;
             if (target.hate > 100) target.hate = 100;
@@ -524,31 +520,34 @@ class Game {
               this.log(`${target.name} awakened HATE Slashes.`);
             }
           }
-
           rusher.hitCooldown = 0.3;
           target.hitCooldown = 0.3;
           return;
         }
-
         const speed = Math.hypot(rusher.vx, rusher.vy);
         const baseRushDmg = 8;
         const speedMultiplier = speed / 1200;
         const rushDmg = Math.round(baseRushDmg + speedMultiplier * 10);
-
         const dmgTaken = target.takeDamage(rushDmg, rusher, this);
-        this.log(`${rusher.name} hit ${target.name} with Rush Attack.`);
-        Sound.rushImpact();
-
-        const len = Math.hypot(rusher.vx, rusher.vy);
-        target.vx = (rusher.vx / len) * 500;
-        target.vy = (rusher.vy / len) * 500;
-        target.speedBoost = 400;
-        rusher.hitCooldown = 0.5;
-        target.hitCooldown = 0.5;
-        this.damageNumbers.push(new DamageNumber(target.x, target.y, rushDmg, target.color));
-        this.combatTexts.push(new CombatText(target.x, target.y - 20, 'critical'));
-        this.spawnRushImpactEffect(target.x, target.y, rusher.color);
-        rusher.endRush(this, true);
+        if (dmgTaken) {
+          this.log(`${rusher.name} hit ${target.name} with Rush Attack.`);
+          Sound.rushImpact();
+          const len = Math.hypot(rusher.vx, rusher.vy);
+          target.vx = (rusher.vx / len) * 500;
+          target.vy = (rusher.vy / len) * 500;
+          target.speedBoost = 400;
+          rusher.hitCooldown = 0.5;
+          target.hitCooldown = 0.5;
+          this.damageNumbers.push(new DamageNumber(target.x, target.y, rushDmg, target.color));
+          this.combatTexts.push(new CombatText(target.x, target.y - 20, 'critical'));
+          this.spawnRushImpactEffect(target.x, target.y, rusher.color);
+          rusher.endRush(this, true);
+        } else {
+          // If blocked or Last Stand activated, still end the rush if it was active
+          if (rusher.rushState.startsWith('rushing')) {
+            rusher.endRush(this, true);
+          }
+        }
       } else {
         const dvx = b.vx - a.vx;
         const dvy = b.vy - a.vy;
@@ -561,15 +560,14 @@ class Game {
           b.vx += (Math.random()-0.5)*50; b.vy += (Math.random()-0.5)*50;
           a.speedBoost = 80; b.speedBoost = 80;
         }
-
         if (a.hitCooldown <= 0 && b.hitCooldown <= 0) {
           if (aIsCharging && !bIsCharging) {
             const dmg = this.rollDamage(b.damage);
             const dmgTaken = a.takeDamage(dmg, b, this);
-            if (dmgTaken) { 
-                this.log(`${b.name} dealt ${dmg} damage to ${a.name}`); 
-                this.damageNumbers.push(new DamageNumber(a.x, a.y - 20, dmg, a.color));
-                this.combatTexts.push(new CombatText(a.x, a.y - 30, dmg > b.damage ? 'critical' : 'hit'));
+            if (dmgTaken) {
+              this.log(`${b.name} dealt ${dmg} damage to ${a.name}`);
+              this.damageNumbers.push(new DamageNumber(a.x, a.y - 20, dmg, a.color));
+              this.combatTexts.push(new CombatText(a.x, a.y - 30, dmg > b.damage ? 'critical' : 'hit'));
             }
             b.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
@@ -577,10 +575,10 @@ class Game {
           } else if (bIsCharging && !aIsCharging) {
             const dmg = this.rollDamage(a.damage);
             const dmgTaken = b.takeDamage(dmg, a, this);
-            if (dmgTaken) { 
-                this.log(`${a.name} dealt ${dmg} damage to ${b.name}`); 
-                this.damageNumbers.push(new DamageNumber(b.x, b.y - 20, dmg, b.color));
-                this.combatTexts.push(new CombatText(b.x, b.y - 30, dmg > a.damage ? 'critical' : 'hit'));
+            if (dmgTaken) {
+              this.log(`${a.name} dealt ${dmg} damage to ${b.name}`);
+              this.damageNumbers.push(new DamageNumber(b.x, b.y - 20, dmg, b.color));
+              this.combatTexts.push(new CombatText(b.x, b.y - 30, dmg > a.damage ? 'critical' : 'hit'));
             }
             a.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
@@ -593,7 +591,6 @@ class Game {
             const cx = (a.x + b.x) / 2;
             const cy = (a.y + b.y) / 2;
             this.log(`${a.name} collided with ${b.name}`);
-
             if (b.character.abilities && b.character.abilities.parry && Math.random() < 0.15) {
               this.log(`${b.name} successfully parried the attack`);
               if (b.character.abilities.hate) {
@@ -609,15 +606,14 @@ class Game {
               Sound.parry(b.character.assetFolder);
             } else {
               const dmgTaken = b.takeDamage(dmgA, a, this);
-              if (dmgTaken) { 
-                  this.log(`${a.name} dealt ${dmgA} damage to ${b.name}`); 
-                  this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color));
-                  this.combatTexts.push(new CombatText(cx, cy - 10, dmgA > a.damage ? 'critical' : 'hit'));
-              } else { 
-                  this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
+              if (dmgTaken) {
+                this.log(`${a.name} dealt ${dmgA} damage to ${b.name}`);
+                this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color));
+                this.combatTexts.push(new CombatText(cx, cy - 10, dmgA > a.damage ? 'critical' : 'hit'));
+              } else {
+                this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
               }
             }
-
             if (a.character.abilities && a.character.abilities.parry && Math.random() < 0.15) {
               this.log(`${a.name} successfully parried the attack`);
               if (a.character.abilities.hate) {
@@ -633,20 +629,18 @@ class Game {
               Sound.parry(a.character.assetFolder);
             } else {
               const dmgTaken = a.takeDamage(dmgB, b, this);
-              if (dmgTaken) { 
-                  this.log(`${b.name} dealt ${dmgB} damage to ${a.name}`); 
-                  this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color));
-                  this.combatTexts.push(new CombatText(cx, cy - 10, dmgB > b.damage ? 'critical' : 'hit'));
-              } else { 
-                  this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
+              if (dmgTaken) {
+                this.log(`${b.name} dealt ${dmgB} damage to ${a.name}`);
+                this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color));
+                this.combatTexts.push(new CombatText(cx, cy - 10, dmgB > b.damage ? 'critical' : 'hit'));
+              } else {
+                this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
               }
             }
-
             a.hitsLanded++; b.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
             this.collisions++;
             Sound.hit();
-
             let slashPlayed = false;
             if (a.character.abilities && a.character.abilities.knife) {
               a.triggerAttack(b.x, b.y);
@@ -686,12 +680,19 @@ class Game {
     const ctx = this.ctx;
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.save();
+    if (this.cinematicMode) {
+      this.cinematicZoom += 0.015;
+      if (this.cinematicZoom > 2.5) this.cinematicZoom = 2.5;
+      const zoom = this.cinematicZoom;
+      ctx.translate(350, 350);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-this.cinematicTarget.x, -this.cinematicTarget.y);
+    }
     this.arena.draw(ctx);
     this.particles.forEach(p => p.draw(ctx));
     this.hateSlashes.forEach(s => s.draw(ctx));
     this.voidBeams.forEach(b => b.draw(ctx));
-    
-    // Draw Portals as large vertical ovals
     this.fighters.forEach(f => {
       if (f.voidPortalActive) {
         ctx.fillStyle = '#1a0a2a';
@@ -703,14 +704,16 @@ class Game {
         ctx.stroke();
       }
     });
-
     this.summons.forEach(s => s.draw(ctx));
     this.fighters.forEach(f => f.draw(ctx));
     this.fighters.forEach(f => f.drawHpBar(ctx));
     this.damageNumbers.forEach(d => d.draw(ctx));
-    
-    // Render Combat Texts on top of everything
+    // Render Slice Warnings above fighters
+    this.sliceWarnings.forEach(w => w.draw(ctx));
+    // Render Slice Attacks above fighters
+    this.sliceAttacks.forEach(s => s.draw(ctx));
     this.combatTexts.forEach(t => t.draw(ctx));
+    ctx.restore();
   }
 
   loop(time) {
