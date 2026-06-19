@@ -48,11 +48,19 @@ class Fighter {
     this.attackAngle = 0;
     this.speedBoost  = 0;
 
-    // Determination
+    // Determination & Protection
     this.determination = 0;
     this.shieldActive = false;
     this.detCooldown = 0;
     this.detChoicePending = false;
+    
+    // Determination Protection (Fortnite Shield)
+    this.protection = 0;
+    this.maxProtection = 0;
+    if (character.abilities && character.abilities.determination) {
+      this.maxProtection = 50;
+      this.protection = this.maxProtection;
+    }
 
     // Rush
     this.rushState = 'idle';
@@ -83,14 +91,25 @@ class Fighter {
     this.storedVx = 0;
     this.storedVy = 0;
 
-    // Void Meter & Portal
-    this.voidMeter = 0;
-    this.lastVoidMilestone = 0;
+    // Void Meter & Portal & Beam
+    this.voidMeter = 100; // Starts at 100% now
+    this.lastVoidMilestone = 100;
     this.voidPortalActive = false;
     this.voidPortalTriggered = false;
     this.voidExhausted = false;
     this.portalX = 0;
     this.portalY = 0;
+    
+    // Void Beam
+    this.voidBeamDisabled = false;
+    this.voidBeamState = 'idle'; // 'idle', 'charging', 'firing'
+    this.voidBeamChargeTime = 0;
+    this.voidBeamMaxChargeTime = 3.0;
+    this.voidBeamAngle = 0;
+    this.voidBeamCooldown = 0;
+    this.voidBeamTarget = null;
+    this.voidBeamChargeFlash = 0;
+    this.voidBeamTimer = 0; // New timer for firing lock
 
     this.sprite = null;
     if (character.assetFolder) {
@@ -180,10 +199,11 @@ class Fighter {
 
     if (this.rushCooldownTimer > 0) this.rushCooldownTimer -= dt;
 
-    // Void Meter Generation
+    // Void Meter Generation & Comeback Compatibility
     if (this.character.abilities && this.character.abilities.void_meter && this.alive) {
-      if (!this.voidExhausted && this.voidMeter < 100) {
-        this.voidMeter += dt * 1.25;
+      // Regenerate ONLY if depleted to 0 and disabled by beam
+      if (this.voidBeamDisabled && !this.voidExhausted && this.voidMeter < 100) {
+        this.voidMeter += dt * 1.25; // Slow regen for comeback
         if (this.voidMeter > 100) this.voidMeter = 100;
 
         const currentMilestone = Math.floor(this.voidMeter / 25) * 25;
@@ -192,13 +212,11 @@ class Fighter {
           if (currentMilestone === 100) {
             game.log(`${this.name}'s Void Meter reached maximum.`);
             Sound.voidFull(this.character.assetFolder);
-          } else {
-            game.log(`${this.name}'s Void Meter reached ${currentMilestone}%.`);
           }
         }
       }
 
-      // Void Portal Activation
+      // Void Portal Activation (Comeback)
       if (this.hp <= 30 && this.voidMeter >= 100 && !this.voidPortalTriggered && !this.voidExhausted) {
         this.voidPortalTriggered = true;
         this.voidPortalActive = true;
@@ -229,7 +247,7 @@ class Fighter {
         if (this.voidMeter <= 0) {
           this.voidMeter = 0;
           this.voidPortalActive = false;
-          this.voidExhausted = true;
+          this.voidExhausted = true; // Locks meter permanently for the round
           this.vx = this.storedVx;
           this.vy = this.storedVy;
           game.log(`Void Meter depleted.`);
@@ -369,6 +387,55 @@ class Fighter {
       return;
     }
 
+    // Void Beam Firing Lock (Sam remains stationary until beam completely disappears)
+    if (this.voidBeamState === 'firing') {
+      this.voidBeamTimer -= dt;
+      if (this.voidBeamTimer <= 0) {
+        this.voidBeamState = 'idle';
+        this.vx = this.storedVx;
+        this.vy = this.storedVy;
+        this.voidBeamCooldown = 5.0;
+      }
+      if (this.flashTime > 0) this.flashTime -= dt;
+      return; // Skip normal movement
+    }
+
+    // Void Beam Charging
+    if (this.voidBeamState === 'charging') {
+      this.voidBeamChargeTime -= dt;
+      this.voidBeamChargeFlash += dt;
+      
+      const progress = 1 - (this.voidBeamChargeTime / this.voidBeamMaxChargeTime);
+      // Track target until 50% charge
+      if (progress < 0.5) {
+        if (this.voidBeamTarget && this.voidBeamTarget.alive) {
+          this.voidBeamAngle = Math.atan2(this.voidBeamTarget.y - this.y, this.voidBeamTarget.x - this.x);
+        }
+      }
+      
+      if (this.voidBeamChargeTime <= 0) {
+        // Fire Beam
+        this.voidBeamState = 'firing';
+        this.voidBeamTimer = 0.8; // Matches VoidBeam total lifetime
+        game.spawnVoidBeam(this, this.voidBeamAngle);
+        this.voidMeter -= 25;
+        game.log(`${this.name} fired Void Beam.`);
+        game.log(`Void Meter: ${Math.max(0, this.voidMeter)}%.`);
+        Sound.beamFire(this.character.assetFolder);
+        
+        if (this.voidMeter <= 0) {
+          this.voidMeter = 0;
+          this.voidBeamDisabled = true;
+          this.lastVoidMilestone = 0; // Reset for regen logging
+          game.log(`Void Meter depleted.`);
+          game.log(`Void Beam disabled.`);
+        }
+      }
+      // NOT invulnerable, takes normal damage and knockback
+      if (this.flashTime > 0) this.flashTime -= dt;
+      return; // Skip normal movement while charging
+    }
+
     // Normal Movement
     this.x += this.vx * dt;
     this.y += this.vy * dt;
@@ -433,6 +500,29 @@ class Fighter {
       }
     }
 
+    // Void Beam Activation Check
+    if (this.character.abilities && this.character.abilities.void_beam && this.alive) {
+      if (this.voidBeamCooldown > 0) {
+        this.voidBeamCooldown -= dt;
+      } else if (!this.voidBeamDisabled && this.voidBeamState === 'idle' && this.voidMeter >= 25) {
+        // Random chance to start charging
+        if (Math.random() < 0.3 * dt) {
+          this.voidBeamState = 'charging';
+          this.voidBeamChargeTime = this.voidBeamMaxChargeTime;
+          this.storedVx = this.vx;
+          this.storedVy = this.vy;
+          this.vx = 0; this.vy = 0;
+          const opponents = game.fighters.filter(f => f !== this && f.alive);
+          if (opponents.length > 0) {
+            this.voidBeamTarget = opponents[Math.floor(Math.random() * opponents.length)];
+            this.voidBeamAngle = Math.atan2(this.voidBeamTarget.y - this.y, this.voidBeamTarget.x - this.x);
+          }
+          game.log(`${this.name} began charging Void Beam.`);
+          Sound.beamCharge(this.character.assetFolder);
+        }
+      }
+    }
+
     if (this.flashTime > 0) this.flashTime -= dt;
     if (this.hitCooldown > 0) this.hitCooldown -= dt;
     if (this.attackTime > 0) this.attackTime -= dt;
@@ -454,6 +544,29 @@ class Fighter {
     if (this.character.abilities && this.character.abilities.determination && this.shieldActive) {
       game.log(`${this.name} blocked an attack with Determination Shield`);
       return false;
+    }
+
+    // Determination Protection (Absorbs damage first)
+    if (this.protection > 0) {
+      const protDmg = Math.max(1, Math.round(amount * 1.5)); // Amplified damage
+      this.protection -= protDmg;
+      if (this.protection <= 0) {
+        this.protection = 0;
+        game.log(`${this.name}'s Determination Protection broke.`);
+        Sound.protectionBreak(this.character.assetFolder);
+        game.spawnProtectionBreakEffect(this.x, this.y);
+        this.flashTime = 0.15;
+      }
+      
+      // Gain determination from damage absorbed
+      if (this.character.abilities && this.character.abilities.determination && this.rushCooldownTimer <= 0 && this.rushState === 'idle' && !this.shieldActive) {
+        this.determination += amount * 3;
+        if (this.determination >= 100) {
+          this.determination = 100;
+          this.detChoicePending = true;
+        }
+      }
+      return true; // Damage absorbed by protection
     }
 
     this.hp = Math.max(0, this.hp - amount);
@@ -537,6 +650,17 @@ class Fighter {
       ctx.fill();
     }
 
+    // Determination Protection Visual Indicator (Faint Red Glow)
+    if (this.character.abilities && this.character.abilities.determination && this.protection > 0) {
+      ctx.globalAlpha = 0.3;
+      ctx.strokeStyle = '#ff0000';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, this.radius + 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
     if (this.rushState.startsWith('charging')) {
       ctx.globalAlpha = this.chargeFlashValue * 0.6;
       ctx.fillStyle = '#ff0000';
@@ -567,13 +691,37 @@ class Fighter {
       ctx.stroke();
     }
 
-    // Void Meter Visual Indicator
+    // Void Meter Visual Indicator (Full)
     if (this.character.abilities && this.character.abilities.void_meter && this.voidMeter >= 100 && !this.voidExhausted) {
       ctx.strokeStyle = '#4b0082';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(drawX, drawY, this.radius + 5, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    // Void Beam Charging Visuals
+    if (this.voidBeamState === 'charging') {
+      const progress = 1 - (this.voidBeamChargeTime / this.voidBeamMaxChargeTime);
+      // Glow gets brighter
+      ctx.globalAlpha = 0.3 + progress * 0.5;
+      ctx.fillStyle = '#4b0082';
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, this.radius + 5 + progress * 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      
+      // Blinking Targeting Indicator
+      const blinkSpeed = 2 + progress * 12;
+      const blinkVal = (Math.sin(this.voidBeamChargeFlash * blinkSpeed * Math.PI * 2) + 1) / 2;
+      ctx.globalAlpha = blinkVal * 0.8;
+      ctx.strokeStyle = '#9b30ff';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(drawX, drawY);
+      ctx.lineTo(drawX + Math.cos(this.voidBeamAngle) * 1000, drawY + Math.sin(this.voidBeamAngle) * 1000);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
 
     if (this.character.abilities && this.character.abilities.knife && this.attackTime > 0) {
@@ -614,7 +762,18 @@ class Fighter {
     if (!this.alive) return;
     const w = 64, h = 6;
     const x = this.x - w / 2;
-    const y = this.y - this.radius - 22;
+    let y = this.y - this.radius - 22;
+
+    // Draw Determination Protection Bar above HP
+    if (this.protection > 0) {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+      const protPct = this.protection / this.maxProtection;
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(x, y, Math.max(0, w * protPct), h);
+      y -= h + 4; // Move HP bar up
+    }
+
     ctx.fillStyle = '#000000';
     ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
     const pct = this.hp / this.maxHp;
@@ -623,10 +782,16 @@ class Fighter {
     else if (pct <= 0.5) hpColor = '#ddaa44';
     ctx.fillStyle = hpColor;
     ctx.fillRect(x, y, Math.max(0, w * pct), h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px Arial';
+    
+    // Text with 1.5px outline
+    ctx.font = "bold 14px 'IDVERSOFont', Arial, sans-serif";
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#000000';
+    ctx.lineJoin = 'round';
+    ctx.strokeText(this.name, this.x, y - 4);
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(this.name, this.x, y - 4);
   }
 }

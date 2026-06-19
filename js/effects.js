@@ -173,6 +173,81 @@ class HateSlash {
 }
 
 // ============================================================
+//  CLASS: VoidBeam
+// ============================================================
+class VoidBeam {
+  constructor(x, y, angle, owner) {
+    this.x = x; this.y = y;
+    this.angle = angle;
+    this.owner = owner;
+    
+    // Total lifetime is 0.8s
+    this.totalLife = 0.8;
+    this.life = 0.8;
+    
+    // Phase durations
+    this.expandTime = 0.2;   // 0.0s to 0.2s
+    this.activeTime = 0.3;   // 0.2s to 0.5s (Hitbox active)
+    this.collapseTime = 0.3; // 0.5s to 0.8s (Visual only)
+    
+    this.damage = 20; // Unchanged
+    this.knockback = 600; // Unchanged
+    this.baseWidth = 90; 
+    this.hitTargets = new Set();
+  }
+  
+  isHitboxActive() {
+    const elapsed = this.totalLife - this.life;
+    return elapsed < (this.expandTime + this.activeTime);
+  }
+  
+  update(dt) {
+    this.life -= dt;
+  }
+  
+  draw(ctx) {
+    const elapsed = this.totalLife - this.life;
+    let currentWidth = 0;
+    let alpha = 0.9;
+    
+    if (elapsed < this.expandTime) {
+      // Phase 1: Expand rapidly
+      const t = elapsed / this.expandTime;
+      currentWidth = 10 + (this.baseWidth * 1.5 - 10) * t;
+    } else if (elapsed < this.expandTime + this.activeTime) {
+      // Phase 2: Active, settle back down to normal width
+      const t = (elapsed - this.expandTime) / this.activeTime;
+      currentWidth = this.baseWidth * 1.5 - (this.baseWidth * 0.5 * t);
+    } else {
+      // Phase 3: Collapse and fade out
+      const t = (elapsed - (this.expandTime + this.activeTime)) / this.collapseTime;
+      currentWidth = this.baseWidth * (1 - t);
+      alpha = 0.9 * (1 - t);
+    }
+    
+    // Clamp values
+    currentWidth = Math.max(0, currentWidth);
+    alpha = Math.max(0, alpha);
+    
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    ctx.globalAlpha = alpha;
+    
+    // Outer Purple
+    ctx.fillStyle = '#4b0082';
+    ctx.fillRect(0, -currentWidth/2, 1500, currentWidth);
+    
+    // Inner Black Core
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, -currentWidth/4, 1500, currentWidth/2);
+    
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ============================================================
 //  CLASS: Summon
 // ============================================================
 class Summon {

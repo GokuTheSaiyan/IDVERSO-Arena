@@ -6,7 +6,7 @@ const FALLBACK_ROSTER = [
   { id: "fighterB", name: "Fighter B", hp: 100, damage: 5, speed: 220, color: "#5555ff", size: 36, abilities: {}, assetFolder: "FighterB" },
   { id: "itami", name: "Itami", hp: 100, damage: 5, speed: 250, color: "#4a1c1c", size: 36, abilities: { knife: true, parry: true, hate: true }, assetFolder: "Itami" },
   { id: "dino", name: "Dino", hp: 100, damage: 6, speed: 200, color: "#855624", size: 42, abilities: { determination: true, determination_rush: true }, assetFolder: "Dino" },
-  { id: "sam", name: "Sam", hp: 100, damage: 4, speed: 265, color: "#2c233b", size: 36, abilities: { void_meter: true }, assetFolder: "Sam" }
+  { id: "sam", name: "Sam", hp: 100, damage: 4, speed: 265, color: "#2c233b", size: 36, abilities: { void_meter: true, void_beam: true }, assetFolder: "Sam" }
 ];
 
 // ============================================================
@@ -62,8 +62,9 @@ class Game {
 
     this.particles = [];
     this.damageNumbers = [];
-    this.combatTexts = []; // New array for combat text sprites
+    this.combatTexts = [];
     this.hateSlashes = [];
+    this.voidBeams = [];
     this.summons = [];
     this.summonSpawnTimer = 0;
     this.elapsed = 0;
@@ -97,6 +98,9 @@ class Game {
       const angle = Math.random() * Math.PI * 2;
       f.vx = Math.cos(angle) * f.baseSpeed;
       f.vy = Math.sin(angle) * f.baseSpeed;
+      if (f.protection > 0) {
+        this.log(`${f.name}'s Determination Protection is active.`);
+      }
     });
     this.lastTime = 0;
     requestAnimationFrame(t => this.loop(t));
@@ -118,6 +122,17 @@ class Game {
     }
   }
 
+  spawnVoidBeam(owner, angle) {
+    this.voidBeams.push(new VoidBeam(owner.x, owner.y, angle, owner));
+    // Spawn void particles for firing effect
+    for(let i=0; i<20; i++) {
+      const spread = (Math.random() - 0.5) * 0.6;
+      const a = angle + spread;
+      const speed = 200 + Math.random() * 200;
+      this.particles.push(new Particle(owner.x, owner.y, Math.cos(a)*speed, Math.sin(a)*speed, '#4b0082', 0.4, 4 + Math.random() * 4));
+    }
+  }
+
   spawnRushImpactEffect(x, y, color) {
     for (let i = 0; i < 15; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -134,9 +149,24 @@ class Game {
         x, y,
         Math.cos(a) * speed,
         Math.sin(a) * speed,
-        '#000000', // HATE palette
+        '#000000',
         0.4,
         3 + Math.random() * 2
+      ));
+    }
+  }
+
+  spawnProtectionBreakEffect(x, y) {
+    for (let i = 0; i < 20; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = 100 + Math.random() * 150;
+      this.particles.push(new Particle(
+        x, y,
+        Math.cos(a) * speed,
+        Math.sin(a) * speed,
+        '#ff0000',
+        0.5,
+        4 + Math.random() * 3
       ));
     }
   }
@@ -215,7 +245,7 @@ class Game {
             target.vx = s.vx / len; target.vy = s.vy / len;
             target.speedBoost = s.knockback;
             this.damageNumbers.push(new DamageNumber(s.x, s.y, s.damage, target.color));
-            this.combatTexts.push(new CombatText(s.x, s.y - 20, 'hit')); // Added hit text
+            this.combatTexts.push(new CombatText(s.x, s.y - 20, 'hit'));
             for (let i = 0; i < 10 + s.scale * 10; i++) {
               const a = Math.random() * Math.PI * 2;
               const speed = 100 + Math.random() * 150;
@@ -232,6 +262,46 @@ class Game {
         s.life = 0;
       }
     });
+
+    // Update Void Beams
+    this.voidBeams.forEach(b => b.update(dt));
+    this.voidBeams.forEach(beam => {
+      // Only check hitbox if the beam is in its active phase
+      if (beam.isHitboxActive()) {
+        this.fighters.forEach(target => {
+          if (target !== beam.owner && target.alive && !beam.hitTargets.has(target)) {
+            const dx = target.x - beam.x;
+            const dy = target.y - beam.y;
+            const dist = Math.hypot(dx, dy);
+            const targetAngle = Math.atan2(dy, dx);
+            let angleDiff = Math.abs(targetAngle - beam.angle);
+            if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+            
+            if (angleDiff < 0.15 && dist < 1200) { 
+              beam.hitTargets.add(target);
+              const dmgTaken = target.takeDamage(beam.damage, beam.owner, this);
+              if (dmgTaken) {
+                this.log(`Void Beam hit ${target.name}.`);
+                Sound.beamHit(beam.owner.character.assetFolder);
+                target.vx = Math.cos(beam.angle) * beam.knockback;
+                target.vy = Math.sin(beam.angle) * beam.knockback;
+                target.speedBoost = 400;
+                this.damageNumbers.push(new DamageNumber(target.x, target.y, beam.damage, target.color));
+                this.combatTexts.push(new CombatText(target.x, target.y - 20, 'critical'));
+                for (let i=0; i<15; i++) {
+                  const a = Math.random() * Math.PI * 2;
+                  const speed = 100 + Math.random() * 150;
+                  this.particles.push(new Particle(target.x, target.y, Math.cos(a)*speed, Math.sin(a)*speed, '#000000', 0.4, 4 + Math.random() * 3));
+                }
+              } else {
+                this.combatTexts.push(new CombatText(target.x, target.y - 20, 'blocked'));
+              }
+            }
+          }
+        });
+      }
+    });
+    this.voidBeams = this.voidBeams.filter(b => b.life > 0);
 
     // Log Defeats
     this.fighters.forEach(f => {
@@ -299,7 +369,7 @@ class Game {
           Sound.parryHeal(enemy.character.assetFolder);
           this.spawnParryEffect(s.x, s.y);
           this.spawnHealEffect(enemy.x, enemy.y);
-          this.combatTexts.push(new CombatText(s.x, s.y - 20, 'parry')); // Added parry text
+          this.combatTexts.push(new CombatText(s.x, s.y - 20, 'parry'));
           return;
         }
 
@@ -329,13 +399,13 @@ class Game {
             this.log(`${s.type} hit ${enemy.name} for ${s.damage} damage.`);
             enemy.hitCooldown = 0.18;
             this.damageNumbers.push(new DamageNumber(enemy.x, enemy.y, s.damage, enemy.color));
-            this.combatTexts.push(new CombatText(enemy.x, enemy.y - 20, 'hit')); // Added hit text
+            this.combatTexts.push(new CombatText(enemy.x, enemy.y - 20, 'hit'));
             Sound.hit();
             
             s.takeDamage(1);
             if (!s.alive) this.log(`${s.type} was destroyed.`);
           } else {
-            this.combatTexts.push(new CombatText(enemy.x, enemy.y - 20, 'blocked')); // Added blocked text
+            this.combatTexts.push(new CombatText(enemy.x, enemy.y - 20, 'blocked'));
             enemy.hitCooldown = 0.18;
           }
         }
@@ -419,7 +489,7 @@ class Game {
             if (!s.alive) this.log(`${s.type} was destroyed.`);
             Sound.rushImpact();
             this.spawnRushImpactEffect(s.x, s.y, rusher.color);
-            this.combatTexts.push(new CombatText(s.x, s.y - 20, 'critical')); // Added critical text
+            this.combatTexts.push(new CombatText(s.x, s.y - 20, 'critical'));
             hitSummon = true;
           }
         });
@@ -433,7 +503,7 @@ class Game {
           this.log(`${target.name} parried the Rush.`);
           Sound.rushParry();
           this.spawnParryEffect(target.x, target.y);
-          this.combatTexts.push(new CombatText(target.x, target.y - 20, 'parry')); // Added parry text
+          this.combatTexts.push(new CombatText(target.x, target.y - 20, 'parry'));
 
           const len = Math.hypot(rusher.vx, rusher.vy);
           target.vx = -rusher.vx / len;
@@ -476,7 +546,7 @@ class Game {
         rusher.hitCooldown = 0.5;
         target.hitCooldown = 0.5;
         this.damageNumbers.push(new DamageNumber(target.x, target.y, rushDmg, target.color));
-        this.combatTexts.push(new CombatText(target.x, target.y - 20, 'critical')); // Added critical text
+        this.combatTexts.push(new CombatText(target.x, target.y - 20, 'critical'));
         this.spawnRushImpactEffect(target.x, target.y, rusher.color);
         rusher.endRush(this, true);
       } else {
@@ -499,7 +569,7 @@ class Game {
             if (dmgTaken) { 
                 this.log(`${b.name} dealt ${dmg} damage to ${a.name}`); 
                 this.damageNumbers.push(new DamageNumber(a.x, a.y - 20, dmg, a.color));
-                this.combatTexts.push(new CombatText(a.x, a.y - 30, dmg > b.damage ? 'critical' : 'hit')); // Added hit text
+                this.combatTexts.push(new CombatText(a.x, a.y - 30, dmg > b.damage ? 'critical' : 'hit'));
             }
             b.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
@@ -510,7 +580,7 @@ class Game {
             if (dmgTaken) { 
                 this.log(`${a.name} dealt ${dmg} damage to ${b.name}`); 
                 this.damageNumbers.push(new DamageNumber(b.x, b.y - 20, dmg, b.color));
-                this.combatTexts.push(new CombatText(b.x, b.y - 30, dmg > a.damage ? 'critical' : 'hit')); // Added hit text
+                this.combatTexts.push(new CombatText(b.x, b.y - 30, dmg > a.damage ? 'critical' : 'hit'));
             }
             a.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
@@ -534,7 +604,7 @@ class Game {
               }
               const dmgTaken = a.takeDamage(dmgA, b, this);
               if (dmgTaken) { this.log(`${b.name} dealt ${dmgA} damage to ${a.name}`); this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color)); }
-              this.combatTexts.push(new CombatText(cx, cy - 10, 'parry')); // Added parry text
+              this.combatTexts.push(new CombatText(cx, cy - 10, 'parry'));
               this.spawnParryEffect(b.x, b.y);
               Sound.parry(b.character.assetFolder);
             } else {
@@ -542,9 +612,9 @@ class Game {
               if (dmgTaken) { 
                   this.log(`${a.name} dealt ${dmgA} damage to ${b.name}`); 
                   this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color));
-                  this.combatTexts.push(new CombatText(cx, cy - 10, dmgA > a.damage ? 'critical' : 'hit')); // Added hit text
+                  this.combatTexts.push(new CombatText(cx, cy - 10, dmgA > a.damage ? 'critical' : 'hit'));
               } else { 
-                  this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked')); // Added blocked text
+                  this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
               }
             }
 
@@ -558,7 +628,7 @@ class Game {
               }
               const dmgTaken = b.takeDamage(dmgB, a, this);
               if (dmgTaken) { this.log(`${a.name} dealt ${dmgB} damage to ${b.name}`); this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color)); }
-              this.combatTexts.push(new CombatText(cx, cy - 10, 'parry')); // Added parry text
+              this.combatTexts.push(new CombatText(cx, cy - 10, 'parry'));
               this.spawnParryEffect(a.x, a.y);
               Sound.parry(a.character.assetFolder);
             } else {
@@ -566,9 +636,9 @@ class Game {
               if (dmgTaken) { 
                   this.log(`${b.name} dealt ${dmgB} damage to ${a.name}`); 
                   this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color));
-                  this.combatTexts.push(new CombatText(cx, cy - 10, dmgB > b.damage ? 'critical' : 'hit')); // Added hit text
+                  this.combatTexts.push(new CombatText(cx, cy - 10, dmgB > b.damage ? 'critical' : 'hit'));
               } else { 
-                  this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked')); // Added blocked text
+                  this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
               }
             }
 
@@ -619,6 +689,7 @@ class Game {
     this.arena.draw(ctx);
     this.particles.forEach(p => p.draw(ctx));
     this.hateSlashes.forEach(s => s.draw(ctx));
+    this.voidBeams.forEach(b => b.draw(ctx));
     
     // Draw Portals as large vertical ovals
     this.fighters.forEach(f => {

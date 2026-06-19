@@ -59,7 +59,8 @@
     "color": "#2c233b",
     "size": 36,
     "abilities": {
-      "void_meter": true
+      "void_meter": true,
+      "void_beam": true
     },
     "assetFolder": "Sam"
   }

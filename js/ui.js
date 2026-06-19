@@ -51,6 +51,12 @@ function updateBattleUI(g) {
   let detHtml = '';
 
   g.fighters.forEach(f => {
+    // Determination Protection UI
+    if (f.character.abilities && f.character.abilities.determination && f.maxProtection > 0) {
+      const protPct = Math.max(0, (f.protection / f.maxProtection) * 100);
+      hpHtml += '<div class="stat-row"><div class="stat-name" style="color: #ff0000;">' + f.name + ' Prot</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + protPct + '%; background: #ff0000;"></div></div><div class="stat-val" style="color: #ff0000;">' + Math.round(protPct) + '%</div></div>';
+    }
+    
     const hpPct = Math.max(0, (f.hp / f.maxHp) * 100);
     hpHtml += '<div class="stat-row"><div class="stat-name">' + f.name + ' HP</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + hpPct + '%; background:' + f.color + '"></div></div><div class="stat-val">' + Math.round(hpPct) + '%</div></div>';
 
@@ -76,8 +82,10 @@ function updateBattleUI(g) {
       const voidColor = '#4b0082';
       const voidTextColor = '#c0a0e0';
       let voidLabel = 'Void Meter';
-      if (f.voidExhausted) voidLabel = 'Void Meter (Exhausted)';
+      if (f.voidBeamDisabled) voidLabel = 'Void Meter (Regen)';
+      else if (f.voidBeamState === 'charging') voidLabel = 'Void Meter (Charging)';
       else if (f.voidPortalActive) voidLabel = 'Void Meter (Active)';
+      else if (f.voidExhausted) voidLabel = 'Void Meter (Exhausted)';
       detHtml += '<div class="stat-row"><div class="stat-name" style="color:' + voidTextColor + '">' + f.name + ' ' + voidLabel + '</div><div class="stat-bar-bg" style="border:1px solid #555;"><div class="stat-bar-fill" style="width:' + voidPct + '%; background:' + voidColor + ';"></div></div><div class="stat-val" style="color:' + voidTextColor + '">' + Math.round(voidPct) + '%</div></div>';
     }
   });
