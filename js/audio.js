@@ -375,6 +375,44 @@ class AudioManager {
       osc.start(); osc.stop(this.ctx.currentTime + 0.3);
     });
   }
+  doubleBeam(charFolder) {
+    this.play('double_beam', charFolder, () => {
+      if (!this.ctx) return;
+      const osc1 = this.ctx.createOscillator();
+      const gain1 = this.ctx.createGain();
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(800, this.ctx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.4);
+      gain1.gain.setValueAtTime(0.2, this.ctx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+      osc1.connect(gain1); gain1.connect(this.ctx.destination);
+      osc1.start(); osc1.stop(this.ctx.currentTime + 0.4);
+      
+      const osc2 = this.ctx.createOscillator();
+      const gain2 = this.ctx.createGain();
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(1000, this.ctx.currentTime);
+      osc2.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.4);
+      gain2.gain.setValueAtTime(0.15, this.ctx.currentTime);
+      gain2.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+      osc2.connect(gain2); gain2.connect(this.ctx.destination);
+      osc2.start(); osc2.stop(this.ctx.currentTime + 0.4);
+    });
+  }
+  voidRift(charFolder) {
+    this.play('void_rift', charFolder, () => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(100, this.ctx.currentTime + 0.6);
+      gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.6);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.6);
+    });
+  }
 
   lastStandStart(charFolder) {
     this.play('last_stand_start', charFolder, () => {
@@ -434,6 +472,13 @@ class AudioManager {
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
       osc.connect(gain); gain.connect(this.ctx.destination);
       osc.start(); osc.stop(this.ctx.currentTime + 0.2);
+    });
+  }
+
+  dodge(charFolder) {
+    this.play('dodge', charFolder, () => {
+      this.playTone(1000, 0.05, 'sine', 0.1);
+      setTimeout(() => this.playTone(1500, 0.05, 'sine', 0.1), 30);
     });
   }
 

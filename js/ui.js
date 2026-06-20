@@ -32,6 +32,10 @@ const modeTripleBtn    = document.getElementById('mode-triple');
 const battleLogEl      = document.getElementById('battle-log');
 const scenarioSelect   = document.getElementById('scenario-select');
 
+const debugPanel = document.getElementById('debug-panel');
+let debugLoggedIn = false;
+let debugInterval = null;
+
 function clearBattleLog() { battleLogEl.innerHTML = ''; }
 
 function addLogEntry(text) {
@@ -60,6 +64,12 @@ function updateBattleUI(g) {
     let hpName = f.name + ' HP';
     if (f.lastStandActive) hpName = f.name + ' [LS] HP';
     hpHtml += '<div class="stat-row"><div class="stat-name">' + hpName + '</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + hpPct + '%; background:' + f.color + '"></div></div><div class="stat-val">' + Math.round(hpPct) + '%</div></div>';
+
+    if (f.character.abilities && f.character.abilities.dodge) {
+      const dodgePct = f.dodgeMeter;
+      const dodgeColor = '#00ffff';
+      detHtml += '<div class="stat-row"><div class="stat-name" style="color:' + dodgeColor + '">' + f.name + ' Dodge</div><div class="stat-bar-bg"><div class="stat-bar-fill" style="width:' + dodgePct + '%; background:' + dodgeColor + ';"></div></div><div class="stat-val" style="color:' + dodgeColor + '">' + Math.round(dodgePct) + '%</div></div>';
+    }
 
     if (f.character.abilities && f.character.abilities.determination) {
       const detPct = f.determination;
@@ -200,8 +210,13 @@ modeTripleBtn.addEventListener('click', () => {
 
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  if (name === 'menu') menuScreen.classList.add('active');
-  else if (name === 'battle') battleScreen.classList.add('active');
+  if (name === 'menu') {
+    menuScreen.classList.add('active');
+    hideDebugMenu();
+  } else if (name === 'battle') {
+    battleScreen.classList.add('active');
+    initDebugMenu();
+  }
 }
 
 function runCountdown(onComplete) {
@@ -213,7 +228,7 @@ function runCountdown(onComplete) {
       const text = sequence[i];
       countdownNum.textContent = text;
       if (text === 'FIGHT!') { countdownNum.style.color = '#ffcc00'; countdownNum.style.fontSize = '90px'; Sound.fight(); }
-      else { countdownNum.style.color = '#ffffff'; countdownNum.style.fontSize = '120px'; Sound.countdown(); }
+      else { countdownNum.style.color = '#ffffff'; countdownNum.style.fontSize = '140px'; Sound.countdown(); }
       countdownNum.classList.remove('show');
       void countdownNum.offsetWidth;
       countdownNum.classList.add('show');
@@ -252,13 +267,13 @@ function handleGameOver(winner, stats) {
 }
 
 function rematch() {
-  Sound.stopAll(); // Safety audio cleanup
+  Sound.stopAll();
   winnerOverlay.classList.remove('active');
   startBattle();
 }
 
 function backToMenu() {
-  Sound.stopAll(); // Safety audio cleanup
+  Sound.stopAll();
   winnerOverlay.classList.remove('active');
   showScreen('menu');
 }
@@ -266,3 +281,279 @@ function backToMenu() {
 startBtn.addEventListener('click', () => { if (startBtn.disabled === false) { Sound.init(); startBattle(); } });
 rematchBtn.addEventListener('click', rematch);
 charselectBtn.addEventListener('click', backToMenu);
+
+// ============================================================
+//  DEBUG MENU LOGIC
+// ============================================================
+function initDebugMenu() {
+  debugPanel.classList.add('active');
+  if (!debugLoggedIn) {
+    renderDebugLogin();
+  } else {
+    renderDebugControls();
+  }
+}
+
+function hideDebugMenu() {
+  debugPanel.classList.remove('active');
+  if (debugInterval) clearInterval(debugInterval);
+}
+
+function renderDebugLogin() {
+  debugPanel.innerHTML = `
+    <div class="debug-login">
+      <h3>Developer Access</h3>
+      <input type="text" id="debug-user" placeholder="Username" autocomplete="off">
+      <input type="password" id="debug-pass" placeholder="Password" autocomplete="off">
+      <button id="debug-login-btn">Login</button>
+      <div id="debug-error" style="color: #ff4444; text-align: center; font-size: 12px; min-height: 15px;"></div>
+    </div>
+  `;
+  document.getElementById('debug-login-btn').addEventListener('click', () => {
+    const user = document.getElementById('debug-user').value;
+    const pass = document.getElementById('debug-pass').value;
+    if (user === 'Itami' && pass === 'ODIUM') {
+      debugLoggedIn = true;
+      renderDebugControls();
+    } else {
+      document.getElementById('debug-error').textContent = 'Access Denied';
+    }
+  });
+}
+
+function renderDebugControls() {
+  debugPanel.innerHTML = `
+    <div class="debug-header">DEBUG MODE ACTIVE</div>
+    <div class="debug-content" id="debug-content"></div>
+  `;
+  const content = document.getElementById('debug-content');
+  
+  let healthHtml = '<div class="debug-section"><h4>Fighter HP</h4>';
+  game.fighters.forEach((f, i) => {
+    healthHtml += `<div class="debug-row">${f.name}</div>`;
+    healthHtml += '<div class="debug-btn-row">';
+    [100, 50, 25, 10, 1, 0].forEach(pct => {
+      healthHtml += `<button class="debug-btn" data-action="hp" data-fighter="${i}" data-val="${pct}">${pct}%</button>`;
+    });
+    healthHtml += '</div>';
+  });
+  healthHtml += '</div>';
+  content.innerHTML += healthHtml;
+
+  let meterHtml = '<div class="debug-section"><h4>Meters</h4>';
+  const itami = game.fighters.find(f => f.character.abilities.hate);
+  if (itami) {
+    meterHtml += `<div class="debug-row">Itami Hate</div><div class="debug-btn-row">`;
+    [0, 50, 100].forEach(v => meterHtml += `<button class="debug-btn" data-action="meter" data-fighter="hate" data-val="${v}">${v}%</button>`);
+    meterHtml += `</div>`;
+    if (itami.character.abilities.dodge) {
+      meterHtml += `<div class="debug-row">Itami Dodge</div><div class="debug-btn-row">`;
+      [0, 50, 100].forEach(v => meterHtml += `<button class="debug-btn" data-action="meter" data-fighter="dodge" data-val="${v}">${v}%</button>`);
+      meterHtml += `</div>`;
+    }
+  }
+  const dino = game.fighters.find(f => f.character.abilities.determination);
+  if (dino) {
+    meterHtml += `<div class="debug-row">Dino Det</div><div class="debug-btn-row">`;
+    [0, 50, 100].forEach(v => meterHtml += `<button class="debug-btn" data-action="meter" data-fighter="determination" data-val="${v}">${v}%</button>`);
+    meterHtml += `</div>`;
+  }
+  const sam = game.fighters.find(f => f.character.abilities.void_meter);
+  if (sam) {
+    meterHtml += `<div class="debug-row">Sam Void</div><div class="debug-btn-row">`;
+    [0, 50, 100].forEach(v => meterHtml += `<button class="debug-btn" data-action="meter" data-fighter="void_meter" data-val="${v}">${v}%</button>`);
+    meterHtml += `</div>`;
+  }
+  meterHtml += '</div>';
+  content.innerHTML += meterHtml;
+
+  content.innerHTML += `
+    <div class="debug-section">
+      <h4>Last Stand Testing</h4>
+      <div class="debug-btn-row">
+        <button class="debug-btn" data-action="ls_trigger">Trigger LS</button>
+        <button class="debug-btn" data-action="ls_success">Force Success</button>
+        <button class="debug-btn" data-action="ls_failure">Force Failure</button>
+      </div>
+    </div>
+  `;
+
+  content.innerHTML += `
+    <div class="debug-section">
+      <h4>Positions</h4>
+      <div class="debug-btn-row">
+        <button class="debug-btn" data-action="pos_center">Move All Center</button>
+        <button class="debug-btn" data-action="pos_reset">Reset Spawns</button>
+      </div>
+    </div>
+  `;
+
+  content.innerHTML += `
+    <div class="debug-section">
+      <h4>Round Controls</h4>
+      <div class="debug-btn-row">
+        <button class="debug-btn" data-action="round_restart">Restart</button>
+        <button class="debug-btn" data-action="round_end">End Round</button>
+        <button class="debug-btn" data-action="round_pause">Pause</button>
+        <button class="debug-btn" data-action="round_resume">Resume</button>
+      </div>
+    </div>
+  `;
+
+  content.innerHTML += `
+    <div class="debug-section">
+      <h4>Audio</h4>
+      <div class="debug-btn-row">
+        <button class="debug-btn" data-action="audio_stop_sounds">Stop Sounds</button>
+        <button class="debug-btn" data-action="audio_stop_music">Stop Music</button>
+        <button class="debug-btn" data-action="audio_replay_music">Replay Music</button>
+      </div>
+    </div>
+  `;
+
+  content.innerHTML += `
+    <div class="debug-section">
+      <h4>Battle Log</h4>
+      <div class="debug-btn-row">
+        <button class="debug-btn" data-action="log_clear">Clear Log</button>
+        <button class="debug-btn" data-action="log_export">Export Log</button>
+      </div>
+    </div>
+  `;
+
+  content.innerHTML += `<div class="debug-section"><h4>Live State</h4><div id="debug-visuals"></div></div>`;
+
+  document.querySelectorAll('.debug-btn').forEach(btn => {
+    btn.addEventListener('click', handleDebugAction);
+  });
+
+  if (debugInterval) clearInterval(debugInterval);
+  debugInterval = setInterval(updateDebugVisuals, 100);
+}
+
+function handleDebugAction(e) {
+  const btn = e.target;
+  const action = btn.dataset.action;
+  
+  switch(action) {
+    case 'hp':
+      const f = game.fighters[parseInt(btn.dataset.fighter)];
+      const pct = parseInt(btn.dataset.val);
+      if (pct === 0) {
+        f.takeDamage(f.hp, null, game); 
+      } else {
+        f.hp = Math.max(1, f.maxHp * (pct / 100));
+        f.alive = true;
+        f.defeatLogged = false;
+        f.lastStandState = 'idle';
+        f.lastStandActive = false;
+      }
+      break;
+    case 'meter':
+      const meterType = btn.dataset.fighter;
+      const val = parseInt(btn.dataset.val);
+      const fighter = game.fighters.find(f => f.character.abilities[meterType]);
+      if (fighter) {
+        if (meterType === 'hate') {
+          fighter.hate = val;
+          if (val >= 100) { fighter.hateMaxed = true; fighter.hateUnlocked = true; }
+        }
+        if (meterType === 'dodge') fighter.dodgeMeter = val;
+        if (meterType === 'determination') fighter.determination = val;
+        if (meterType === 'void_meter') fighter.voidMeter = val;
+      }
+      break;
+    case 'ls_trigger':
+      const itamiT = game.fighters.find(f => f.character.abilities.hate);
+      if (itamiT) itamiT.startLastStand(game);
+      break;
+    case 'ls_success':
+      game.forceLastStandSuccess = true;
+      const itamiS = game.fighters.find(f => f.character.abilities.hate);
+      if (itamiS) itamiS.takeDamage(itamiS.hp, null, game);
+      break;
+    case 'ls_failure':
+      game.forceLastStandFailure = true;
+      const itamiF = game.fighters.find(f => f.character.abilities.hate);
+      if (itamiF) itamiF.takeDamage(itamiF.hp, null, game);
+      break;
+    case 'pos_center':
+      game.fighters.forEach(f => {
+        f.x = game.arena.x + game.arena.size / 2;
+        f.y = game.arena.y + game.arena.size / 2;
+      });
+      break;
+    case 'pos_reset':
+      game.fighters.forEach(f => {
+        f.x = f.originalSpawnX;
+        f.y = f.originalSpawnY;
+      });
+      break;
+    case 'round_restart':
+      rematch();
+      break;
+    case 'round_end':
+      const alive = game.fighters.filter(f => f.alive);
+      if (alive.length > 1) {
+        for (let i = 1; i < alive.length; i++) {
+          alive[i].takeDamage(alive[i].hp, alive[0], game);
+        }
+      }
+      break;
+    case 'round_pause':
+      game.paused = true;
+      break;
+    case 'round_resume':
+      game.paused = false;
+      game.lastTime = 0;
+      requestAnimationFrame(t => game.loop(t));
+      break;
+    case 'audio_stop_sounds':
+      Sound.stopAll();
+      break;
+    case 'audio_stop_music':
+      Sound.stopMusic();
+      break;
+    case 'audio_replay_music':
+      const itamiM = game.fighters.find(f => f.lastStandActive);
+      if (itamiM) Sound.playMusic('last_stand_theme', itamiM.character.assetFolder);
+      break;
+    case 'log_clear':
+      battleLogEl.innerHTML = '';
+      break;
+    case 'log_export':
+      const logText = battleLogEl.innerText;
+      const blob = new Blob([logText], {type: 'text/plain'});
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'battle_log.txt';
+      link.click();
+      break;
+  }
+}
+
+function updateDebugVisuals() {
+  const visualsEl = document.getElementById('debug-visuals');
+  if (!visualsEl || !game) return;
+  let html = '';
+  game.fighters.forEach(f => {
+    let state = 'Normal';
+    if (!f.alive) state = 'Defeated';
+    else if (f.lastStandState === 'charging') state = 'LS Charging';
+    else if (f.lastStandActive) state = 'Last Stand';
+    else if (f.rushState.startsWith('charging')) state = 'Rush Charging';
+    else if (f.rushState.startsWith('rushing')) state = 'Rushing';
+    else if (f.voidBeamState === 'charging') state = 'Beam Charging';
+    else if (f.voidBeamState === 'firing') state = 'Beam Firing';
+    else if (f.voidPortalActive) state = 'Summoning';
+    else if (f.rushStunTimer > 0) state = 'Stunned';
+    
+    html += `<div class="debug-visual-row"><b>${f.name}</b></div>`;
+    html += `<div>HP: ${Math.round(f.hp)} | State: ${state}</div>`;
+    if (f.character.abilities.hate) html += `<div>Hate: ${Math.round(f.hate)}%</div>`;
+    if (f.character.abilities.dodge) html += `<div>Dodge: ${Math.round(f.dodgeMeter)}%</div>`;
+    if (f.character.abilities.determination) html += `<div>Det: ${Math.round(f.determination)}%</div>`;
+    if (f.character.abilities.void_meter) html += `<div>Void: ${Math.round(f.voidMeter)}%</div>`;
+  });
+  visualsEl.innerHTML = html;
+}

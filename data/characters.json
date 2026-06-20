@@ -32,7 +32,8 @@
     "abilities": {
       "knife": true,
       "parry": true,
-      "hate": true
+      "hate": true,
+      "dodge": true
     },
     "assetFolder": "Itami"
   },

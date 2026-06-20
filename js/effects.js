@@ -164,24 +164,30 @@ class HateSlash {
 //  CLASS: VoidBeam
 // ============================================================
 class VoidBeam {
-  constructor(x, y, angle, owner) {
+  constructor(x, y, angle, owner, arena) {
     this.x = x; this.y = y;
     this.angle = angle;
     this.owner = owner;
+    this.arena = arena;
     this.life = 0.8;
     this.maxLife = 0.8;
     this.damage = 20;
     this.knockback = 600;
     this.baseWidth = 90;
+    this.length = 1500;
     this.hitTargets = new Set();
+    this.riftSpawned = false;
   }
+  
   isHitboxActive() {
     const elapsed = this.maxLife - this.life;
     return elapsed < 0.5;
   }
+  
   update(dt) {
     this.life -= dt;
   }
+  
   draw(ctx) {
     const elapsed = this.maxLife - this.life;
     let currentWidth = 0;
@@ -199,17 +205,100 @@ class VoidBeam {
     }
     currentWidth = Math.max(0, currentWidth);
     alpha = Math.max(0, alpha);
+    
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.globalAlpha = alpha;
     ctx.fillStyle = '#4b0082';
-    ctx.fillRect(0, -currentWidth/2, 1500, currentWidth);
+    ctx.fillRect(0, -currentWidth/2, this.length, currentWidth);
     ctx.fillStyle = '#000000';
-    ctx.fillRect(0, -currentWidth/4, 1500, currentWidth/2);
+    ctx.fillRect(0, -currentWidth/4, this.length, currentWidth/2);
     ctx.restore();
     ctx.globalAlpha = 1;
   }
+}
+
+// ============================================================
+//  CLASS: VoidRift
+// ============================================================
+class VoidRift {
+  constructor(x, y, angle, owner, arena) {
+    this.x = x; this.y = y;
+    this.angle = angle;
+    this.owner = owner;
+    this.arena = arena;
+    this.life = 2.5;
+    this.maxLife = 2.5;
+    this.damageTimer = 0;
+    this.width = 30;
+    this.damage = 2;
+    this.length = 1500;
+    this.flickerTimer = 0;
+  }
+  
+  update(dt) {
+    this.life -= dt;
+    this.damageTimer -= dt;
+    this.flickerTimer += dt;
+  }
+  
+  checkHit(target) {
+    if (target.x < this.arena.x || target.x > this.arena.x + this.arena.size || 
+        target.y < this.arena.y || target.y > this.arena.y + this.arena.size) return false;
+    
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const cos = Math.cos(-this.angle);
+    const sin = Math.sin(-this.angle);
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+    return Math.abs(localX) < this.length / 2 && Math.abs(localY) < this.width / 2 + target.radius;
+  }
+  
+  draw(ctx) {
+    const alpha = Math.max(0, this.life / this.maxLife);
+    const width = this.width * (0.5 + 0.5 * alpha);
+    const flicker = (Math.sin(this.flickerTimer * 15) + 1) / 2;
+    
+    ctx.save();
+    ctx.globalAlpha = alpha * (0.5 + flicker * 0.3);
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    
+    ctx.fillStyle = '#2c233b';
+    ctx.fillRect(0, -width/2, this.length, width);
+    
+    ctx.fillStyle = '#080212';
+    ctx.fillRect(0, -width/4, this.length, width/2);
+    
+    ctx.strokeStyle = `rgba(202, 3, 252, ${alpha * 0.8})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, -width/2);
+    ctx.lineTo(this.length, -width/2);
+    ctx.moveTo(0, width/2);
+    ctx.lineTo(this.length, width/2);
+    ctx.stroke();
+    
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ============================================================
+//  HELPER: distToSegment
+// ============================================================
+function distToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const l2 = dx*dx + dy*dy;
+  if (l2 === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = ax + t * dx;
+  const projY = ay + t * dy;
+  return Math.hypot(px - projX, py - projY);
 }
 
 // ============================================================
@@ -245,7 +334,6 @@ class SliceWarning {
     const color = flashVal === 0 ? '#ff0000' : '#ffff00';
     ctx.save();
     ctx.translate(this.x, this.y);
-    // Offset rotation by -PI/2 so the exclamation mark visually aligns with the horizontal slice direction
     ctx.rotate(this.angle - Math.PI / 2);
     ctx.font = "bold 56px 'IDVERSOFont', Arial, sans-serif";
     ctx.textAlign = 'center';
@@ -254,7 +342,6 @@ class SliceWarning {
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 4;
     ctx.lineJoin = 'round';
-    // Draw only ONE exclamation mark
     ctx.strokeText('!', 0, 0);
     ctx.fillText('!', 0, 0);
     ctx.restore();
@@ -270,10 +357,9 @@ class SliceAttack {
     this.y = y;
     this.angle = angle;
     this.owner = owner;
-    // Calculate length using 10x the arena diagonal to guarantee no clipping at any angle
     const arenaDiagonal = arenaSize * Math.SQRT2;
     this.length = arenaDiagonal * 10; 
-    this.baseWidth = 60; // Increased width noticeably
+    this.baseWidth = 60;
     this.damage = 8;
     this.knockback = 300;
     this.totalLife = 0.6;

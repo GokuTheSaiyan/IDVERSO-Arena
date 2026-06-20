@@ -33,7 +33,6 @@ class Fighter {
     this.damage    = character.damage;
     this.baseSpeed = character.speed;
 
-    // Store original spawn position for Last Stand safety teleport
     this.originalSpawnX = x;
     this.originalSpawnY = y;
 
@@ -52,7 +51,6 @@ class Fighter {
     this.attackAngle = 0;
     this.speedBoost  = 0;
 
-    // Determination & Protection
     this.determination = 0;
     this.shieldActive = false;
     this.detCooldown = 0;
@@ -64,7 +62,6 @@ class Fighter {
       this.protection = this.maxProtection;
     }
 
-    // Rush
     this.rushState = 'idle';
     this.rushChargesLeft = 0;
     this.rushChargeTime = 0;
@@ -82,7 +79,6 @@ class Fighter {
     this.chargeFlashValue = 0;
     this.shakeIntensity = 0;
 
-    // HATE
     this.hate = 0;
     this.hateMaxed = false;
     this.hateUnlocked = false;
@@ -93,7 +89,6 @@ class Fighter {
     this.storedVx = 0;
     this.storedVy = 0;
 
-    // Void Meter & Portal & Beam
     this.voidMeter = 100;
     this.lastVoidMilestone = 100;
     this.voidPortalActive = false;
@@ -110,8 +105,8 @@ class Fighter {
     this.voidBeamTarget = null;
     this.voidBeamChargeFlash = 0;
     this.voidBeamTimer = 0;
+    this.voidBeamType = 'single';
 
-    // Last Stand
     this.lastStandUsed = false;
     this.lastStandActive = false;
     this.lastStandState = 'idle';
@@ -119,11 +114,14 @@ class Fighter {
     this.lastStandDrainLogTimer = 0;
     this.trail = [];
 
-    // Slice (Last Stand passive attack)
     this.sliceCooldownTimer = 0;
     this.lastSliceX = -999;
     this.lastSliceY = -999;
     this.lastSliceAngle = -999;
+
+    this.dodgeMeter = 100;
+    this.lastCombatTime = -10;
+    this.dodgeRegenLogged = false;
 
     this.sprite = null;
     if (character.assetFolder) {
@@ -209,9 +207,7 @@ class Fighter {
     
     game.log(`YOU SHOULD HAVE FINISHED HIM.`);
 
-    // 1. Cancel all active abilities safely
     game.fighters.forEach(f => {
-      // Cancel Rush
       if (f.rushState.startsWith('charging') || f.rushState.startsWith('rushing')) {
         f.rushState = 'idle';
         f.rushInvulnerable = false;
@@ -222,25 +218,21 @@ class Fighter {
         f.shakeIntensity = 0;
         f.chargeFlashValue = 0;
       }
-      // Cancel Beam
       if (f.voidBeamState === 'charging' || f.voidBeamState === 'firing') {
         f.voidBeamState = 'idle';
         f.voidBeamTimer = 0;
         f.voidBeamChargeTime = 0;
         f.voidBeamChargeFlash = 0;
       }
-      // Cancel Slash
       if (f.hateWindupTime > 0) {
         f.hateWindupTime = 0;
         f.attackTime = 0;
       }
-      // Cancel Portal
       if (f.voidPortalActive) {
         f.voidPortalActive = false;
       }
     });
     
-    // Clear active projectiles/hitboxes
     game.voidBeams = [];
     game.hateSlashes = [];
     game.sliceAttacks = [];
@@ -248,7 +240,6 @@ class Fighter {
     
     game.log(`Active abilities cancelled.`);
 
-    // 2 & 3. Remove all velocity, knockback, momentum
     game.fighters.forEach(f => {
       f.vx = 0;
       f.vy = 0;
@@ -257,17 +248,14 @@ class Fighter {
     
     game.log(`Velocities cleared.`);
 
-    // 4. Clamp positions to arena bounds
     game.fighters.forEach(f => {
       f.x = Math.max(game.arena.x + f.radius, Math.min(game.arena.x + game.arena.size - f.radius, f.x));
       f.y = Math.max(game.arena.y + f.radius, Math.min(game.arena.y + game.arena.size - f.radius, f.y));
     });
 
-    // 5. Teleport Itami to arena center
     this.x = game.arena.x + game.arena.size / 2;
     this.y = game.arena.y + game.arena.size / 2;
 
-    // 6. Teleport opponents to their round spawn locations
     game.fighters.forEach(f => {
       if (f !== this) {
         f.x = f.originalSpawnX;
@@ -275,7 +263,6 @@ class Fighter {
       }
     });
 
-    // Position Validation
     game.fighters.forEach(f => {
       if (f.x < game.arena.x + f.radius || f.x > game.arena.x + game.arena.size - f.radius ||
           f.y < game.arena.y + f.radius || f.y > game.arena.y + game.arena.size - f.radius) {
@@ -287,7 +274,6 @@ class Fighter {
     game.log(`Arena positions validated.`);
     game.log(`Fighters repositioned successfully.`);
 
-    // 7. Resume cinematic
     game.cinematicMode = true;
     game.cinematicTarget = this;
     game.cinematicZoom = 1.0;
@@ -304,7 +290,7 @@ class Fighter {
     Sound.lastStandExplosion(this.character.assetFolder);
     Sound.lastStandLoopStart(this.character.assetFolder);
     Sound.playMusic('last_stand_theme', this.character.assetFolder);
-    game.log(`HATE intensifies.`);
+    game.log(`Hate intensifies.`);
     for(let i=0; i<40; i++) {
       const a = Math.random() * Math.PI * 2;
       const speed = 200 + Math.random() * 300;
@@ -314,6 +300,8 @@ class Fighter {
     game.log(`HATE eruption completed.`);
     game.log(`${this.name} revived at full health.`);
     game.log(`HATE Meter locked at 100%.`);
+    
+    game.startAnnouncement();
   }
 
   update(dt, arena, game) {
@@ -335,7 +323,21 @@ class Fighter {
 
     if (this.rushCooldownTimer > 0) this.rushCooldownTimer -= dt;
 
-    // Void Meter
+    if (this.character.abilities && this.character.abilities.dodge) {
+      if (this.dodgeMeter < 100) {
+        if (game.elapsed - this.lastCombatTime > 5.0) {
+          this.dodgeMeter += dt * 2.5;
+          if (this.dodgeMeter > 100) this.dodgeMeter = 100;
+          if (!this.dodgeRegenLogged) {
+            game.log(`${this.name} Dodge Meter regeneration started.`);
+            this.dodgeRegenLogged = true;
+          }
+        } else {
+          this.dodgeRegenLogged = false;
+        }
+      }
+    }
+
     if (this.character.abilities && this.character.abilities.void_meter && this.alive) {
       if (this.voidBeamDisabled && !this.voidExhausted && this.voidMeter < 100) {
         this.voidMeter += dt * 1.25;
@@ -388,7 +390,6 @@ class Fighter {
       }
     }
 
-    // Determination
     if (this.character.abilities && this.character.abilities.determination && this.alive) {
       if (this.rushCooldownTimer > 0) {
       } else if (this.shieldActive) {
@@ -425,7 +426,6 @@ class Fighter {
       }
     }
 
-    // Rush Charging
     if (this.rushState.startsWith('charging')) {
       this.rushChargeTime -= dt;
       this.chargeFlashTimer += dt;
@@ -459,7 +459,6 @@ class Fighter {
       return;
     }
 
-    // Rushing
     if (this.rushState.startsWith('rushing')) {
       this.rushTimer -= dt;
       this.afterimages.push({ x: this.x, y: this.y, life: 0.2 });
@@ -484,8 +483,8 @@ class Fighter {
       return;
     }
 
-    // HATE Slash Windup
     if (this.hateWindupTime > 0) {
+      this.lastCombatTime = game.elapsed;
       this.hateWindupTime -= dt;
       if (this.hateWindupTime <= 0) {
         this.hateWindupTime = 0;
@@ -502,7 +501,6 @@ class Fighter {
       return;
     }
 
-    // Void Beam Firing Lock
     if (this.voidBeamState === 'firing') {
       this.voidBeamTimer -= dt;
       if (this.voidBeamTimer <= 0) {
@@ -515,7 +513,6 @@ class Fighter {
       return;
     }
 
-    // Void Beam Charging
     if (this.voidBeamState === 'charging') {
       this.voidBeamChargeTime -= dt;
       this.voidBeamChargeFlash += dt;
@@ -529,10 +526,20 @@ class Fighter {
         this.voidBeamState = 'firing';
         this.voidBeamTimer = 0.8;
         game.spawnVoidBeam(this, this.voidBeamAngle);
-        this.voidMeter -= 25;
-        game.log(`${this.name} fired Void Beam.`);
+        
+        let cost = 10;
+        if (this.voidBeamType === 'double') {
+          cost = 20;
+          Sound.doubleBeam(this.character.assetFolder);
+          game.log(`${this.name} fired a Double Beam.`);
+        } else {
+          game.log(`${this.name} fired a Beam.`);
+        }
+        
+        this.voidMeter -= cost;
         game.log(`Void Meter: ${Math.max(0, this.voidMeter)}%.`);
         Sound.beamFire(this.character.assetFolder);
+        
         if (this.voidMeter <= 0) {
           this.voidMeter = 0;
           this.voidBeamDisabled = true;
@@ -545,7 +552,6 @@ class Fighter {
       return;
     }
 
-    // Normal Movement
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     if (this.x - this.radius < arena.x) { this.x = arena.x + this.radius; this.vx = Math.abs(this.vx); this.vy += (Math.random()-0.5)*70; }
@@ -568,7 +574,6 @@ class Fighter {
     }
     if (this.speedBoost > 0) { this.speedBoost -= dt * 250; if (this.speedBoost < 0) this.speedBoost = 0; }
 
-    // Last Stand Movement Trail
     if (this.lastStandActive) {
       if (this.trail.length === 0 || Math.hypot(this.x - this.trail[this.trail.length-1].x, this.y - this.trail[this.trail.length-1].y) > 8) {
         this.trail.push({ x: this.x, y: this.y, life: 0.3 });
@@ -578,7 +583,6 @@ class Fighter {
     this.trail.forEach(t => t.life -= dt);
     this.trail = this.trail.filter(t => t.life > 0);
 
-    // HATE System
     if (this.character.abilities && this.character.abilities.hate && this.alive) {
       if (this.hateSlashCooldown > 0) {
         this.hateSlashCooldown -= dt;
@@ -614,11 +618,10 @@ class Fighter {
       }
     }
 
-    // Void Beam Activation Check
     if (this.character.abilities && this.character.abilities.void_beam && this.alive) {
       if (this.voidBeamCooldown > 0) {
         this.voidBeamCooldown -= dt;
-      } else if (!this.voidBeamDisabled && this.voidBeamState === 'idle' && this.voidMeter >= 25) {
+      } else if (!this.voidBeamDisabled && this.voidBeamState === 'idle' && this.voidMeter >= 10) {
         if (Math.random() < 0.3 * dt) {
           this.voidBeamState = 'charging';
           this.voidBeamChargeTime = this.voidBeamMaxChargeTime;
@@ -630,13 +633,19 @@ class Fighter {
             this.voidBeamTarget = opponents[Math.floor(Math.random() * opponents.length)];
             this.voidBeamAngle = Math.atan2(this.voidBeamTarget.y - this.y, this.voidBeamTarget.x - this.x);
           }
+          
+          if (this.voidMeter >= 20 && Math.random() < 0.5) {
+            this.voidBeamType = 'double';
+          } else {
+            this.voidBeamType = 'single';
+          }
+          
           game.log(`${this.name} began charging Void Beam.`);
           Sound.beamCharge(this.character.assetFolder);
         }
       }
     }
 
-    // Last Stand HP Drain & Slice Management
     if (this.lastStandActive) {
       this.hp -= this.maxHp * 0.04 * dt;
       this.hate = 100;
@@ -646,11 +655,9 @@ class Fighter {
         game.log(`HATE consumes him.`);
       }
 
-      // Slice passive attack management
       if (this.sliceCooldownTimer > 0) {
         this.sliceCooldownTimer -= dt;
       } else {
-        // Spawn a group of 2 independent warnings
         let warningDuration = 0.75 + Math.random() * 0.5;
         for(let i=0; i<2; i++) {
           const margin = 50;
@@ -679,8 +686,7 @@ class Fighter {
         }
         Sound.sliceWarning(this.character.assetFolder);
         
-        // Set cooldown for next group (Warning duration + 3.0s)
-        this.sliceCooldownTimer = warningDuration + 3.0;
+        this.sliceCooldownTimer = warningDuration + 1.0;
       }
 
       if (this.hp <= 0) {
@@ -698,8 +704,22 @@ class Fighter {
     if (this.attackTime > 0) this.attackTime -= dt;
   }
 
-  takeDamage(amount, attacker, game) {
+  takeDamage(amount, attacker, game, isMajorAttack = false, dodgeCost = 0) {
     if (!this.alive) return false;
+
+    if (isMajorAttack && this.character.abilities && this.character.abilities.dodge && this.dodgeMeter >= dodgeCost) {
+      this.dodgeMeter -= dodgeCost;
+      this.lastCombatTime = game.elapsed;
+      game.log(`${this.name} dodged the attack.`);
+      Sound.dodge(this.character.assetFolder);
+      game.spawnDodgeEffect(this.x, this.y);
+      if (this.dodgeMeter <= 0) {
+        this.dodgeMeter = 0;
+        game.log(`${this.name} Dodge Meter depleted.`);
+      }
+      return false;
+    }
+
     if (this.voidPortalActive) {
       game.log(`${this.name} is invulnerable during Void Portal!`);
       return false;
@@ -736,6 +756,7 @@ class Fighter {
     }
     this.hp = Math.max(0, this.hp - amount);
     this.flashTime = 0.15;
+    this.lastCombatTime = game.elapsed;
     if (this.character.abilities && this.character.abilities.determination && this.rushCooldownTimer <= 0 && this.rushState === 'idle' && !this.shieldActive) {
       this.determination += amount * 3;
       if (this.determination >= 100) {
@@ -758,15 +779,26 @@ class Fighter {
     }
     if (this.hp <= 0) {
       if (this.character.abilities && this.character.abilities.hate && !this.lastStandUsed) {
-        // 15% chance to activate Last Stand
-        if (Math.random() < 0.15) {
+        let activateLastStand = false;
+        if (game.forceLastStandSuccess) {
+          activateLastStand = true;
+          game.forceLastStandSuccess = false;
+        } else if (game.forceLastStandFailure) {
+          activateLastStand = false;
+          game.forceLastStandFailure = false;
+        } else {
+          const hatePct = this.hate / 100;
+          const lastStandChance = 0.20 + 0.45 * Math.pow(hatePct, 1.5);
+          activateLastStand = Math.random() < lastStandChance;
+        }
+
+        if (activateLastStand) {
           this.startLastStand(game);
           return false;
         } else {
-          // Mark as used so it doesn't roll again if somehow revived or survives at 0 HP
           this.lastStandUsed = true;
           game.log(`THE HATRED FADES.`);
-          this.defeatLogged = true; // Prevent default "Itami defeated." log
+          this.defeatLogged = true;
         }
       }
       this.alive = false;
@@ -906,17 +938,31 @@ class Fighter {
       ctx.globalAlpha = 0.3 + progress * 0.5;
       ctx.fillStyle = '#4b0082';
       ctx.beginPath();
-      ctx.arc(drawX, drawY, this.radius + 5 + progress * 10, 0, Math.PI * 2);
+      ctx.arc(drawX, drawY, this.radius + 5 + progress * (this.voidBeamType === 'double' ? 15 : 10), 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+      
       const blinkSpeed = 2 + progress * 12;
       const blinkVal = (Math.sin(this.voidBeamChargeFlash * blinkSpeed * Math.PI * 2) + 1) / 2;
       ctx.globalAlpha = blinkVal * 0.8;
       ctx.strokeStyle = '#9b30ff';
-      ctx.lineWidth = 5;
+      ctx.lineWidth = this.voidBeamType === 'double' ? 7 : 5;
       ctx.beginPath();
-      ctx.moveTo(drawX, drawY);
-      ctx.lineTo(drawX + Math.cos(this.voidBeamAngle) * 1000, drawY + Math.sin(this.voidBeamAngle) * 1000);
+      
+      if (this.voidBeamType === 'double') {
+        const perpX = Math.cos(this.voidBeamAngle + Math.PI / 2);
+        const perpY = Math.sin(this.voidBeamAngle + Math.PI / 2);
+        const offset = 15;
+        
+        ctx.moveTo(drawX + perpX * offset, drawY + perpY * offset);
+        ctx.lineTo(drawX + perpX * offset + Math.cos(this.voidBeamAngle) * 1000, drawY + perpY * offset + Math.sin(this.voidBeamAngle) * 1000);
+        
+        ctx.moveTo(drawX - perpX * offset, drawY - perpY * offset);
+        ctx.lineTo(drawX - perpX * offset + Math.cos(this.voidBeamAngle) * 1000, drawY - perpY * offset + Math.sin(this.voidBeamAngle) * 1000);
+      } else {
+        ctx.moveTo(drawX, drawY);
+        ctx.lineTo(drawX + Math.cos(this.voidBeamAngle) * 1000, drawY + Math.sin(this.voidBeamAngle) * 1000);
+      }
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
@@ -959,6 +1005,15 @@ class Fighter {
     const w = 64, h = 6;
     const x = this.x - w / 2;
     let y = this.y - this.radius - 22;
+
+    if (this.character.abilities && this.character.abilities.dodge) {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(x - 1, y - 1, w + 2, 4 + 2);
+      ctx.fillStyle = '#00ffff';
+      ctx.fillRect(x, y, Math.max(0, w * (this.dodgeMeter / 100)), 4);
+      y -= 4 + 4;
+    }
+
     if (this.protection > 0) {
       ctx.fillStyle = '#000000';
       ctx.fillRect(x - 1, y - 1, w + 2, h + 2);

@@ -4,7 +4,7 @@
 const FALLBACK_ROSTER = [
   { id: "fighterA", name: "Fighter A", hp: 100, damage: 5, speed: 220, color: "#ff5555", size: 36, abilities: {}, assetFolder: "FighterA" },
   { id: "fighterB", name: "Fighter B", hp: 100, damage: 5, speed: 220, color: "#5555ff", size: 36, abilities: {}, assetFolder: "FighterB" },
-  { id: "itami", name: "Itami", hp: 100, damage: 5, speed: 250, color: "#4a1c1c", size: 36, abilities: { knife: true, parry: true, hate: true }, assetFolder: "Itami" },
+  { id: "itami", name: "Itami", hp: 100, damage: 5, speed: 250, color: "#4a1c1c", size: 36, abilities: { knife: true, parry: true, hate: true, dodge: true }, assetFolder: "Itami" },
   { id: "dino", name: "Dino", hp: 100, damage: 6, speed: 200, color: "#855624", size: 42, abilities: { determination: true, determination_rush: true }, assetFolder: "Dino" },
   { id: "sam", name: "Sam", hp: 100, damage: 4, speed: 265, color: "#2c233b", size: 36, abilities: { void_meter: true, void_beam: true }, assetFolder: "Sam" }
 ];
@@ -65,6 +65,7 @@ class Game {
     this.combatTexts = [];
     this.hateSlashes = [];
     this.voidBeams = [];
+    this.voidRifts = [];
     this.sliceWarnings = [];
     this.sliceAttacks = [];
     this.summons = [];
@@ -79,6 +80,13 @@ class Game {
     this.cinematicMode = false;
     this.cinematicTarget = null;
     this.cinematicZoom = 1.0;
+    
+    this.forceLastStandSuccess = false;
+    this.forceLastStandFailure = false;
+
+    this.announcementActive = false;
+    this.announcementTimer = 0;
+    this.announcementMaxTimer = 2.5;
 
     if (Object.keys(CombatText.sprites).length === 0) {
       const types = ['parry', 'blocked', 'hit', 'critical'];
@@ -94,6 +102,11 @@ class Game {
   log(text) {
     const t = this.elapsed.toFixed(1);
     if (this.onLog) this.onLog(`[${t}s] ${text}`);
+  }
+
+  startAnnouncement() {
+    this.announcementActive = true;
+    this.announcementTimer = this.announcementMaxTimer;
   }
 
   start() {
@@ -127,7 +140,19 @@ class Game {
   }
 
   spawnVoidBeam(owner, angle) {
-    this.voidBeams.push(new VoidBeam(owner.x, owner.y, angle, owner));
+    const offset = 25;
+    const perpX = Math.cos(angle + Math.PI / 2);
+    const perpY = Math.sin(angle + Math.PI / 2);
+    
+    if (owner.voidBeamType === 'double') {
+      const beam1 = new VoidBeam(owner.x + perpX * offset, owner.y + perpY * offset, angle, owner, this.arena);
+      const beam2 = new VoidBeam(owner.x - perpX * offset, owner.y - perpY * offset, angle, owner, this.arena);
+      this.voidBeams.push(beam1, beam2);
+    } else {
+      const beam = new VoidBeam(owner.x, owner.y, angle, owner, this.arena);
+      this.voidBeams.push(beam);
+    }
+    
     for(let i=0; i<20; i++) {
       const spread = (Math.random() - 0.5) * 0.6;
       const a = angle + spread;
@@ -136,8 +161,23 @@ class Game {
     }
   }
 
+  spawnVoidRift(beam) {
+    this.voidRifts.push(new VoidRift(beam.x, beam.y, beam.angle, beam.owner, this.arena));
+    this.log(`Void Rift created.`);
+    Sound.voidRift(beam.owner.character.assetFolder);
+  }
+
   spawnSlice(owner, x, y, angle) {
     this.sliceAttacks.push(new SliceAttack(x, y, angle, this.arena.size, owner));
+  }
+
+  spawnDodgeEffect(x, y) {
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = 80 + Math.random() * 120;
+      this.particles.push(new Particle(x, y, Math.cos(a)*speed, Math.sin(a)*speed, '#000000', 0.25, 4));
+      this.particles.push(new Particle(x, y, Math.cos(a)*speed*0.5, Math.sin(a)*speed*0.5, '#ae00ff', 0.25, 3));
+    }
   }
 
   spawnRushImpactEffect(x, y, color) {
@@ -166,6 +206,14 @@ class Game {
 
   update(dt) {
     this.elapsed += dt;
+    
+    if (this.announcementActive) {
+      this.announcementTimer -= dt;
+      if (this.announcementTimer <= 0) {
+        this.announcementActive = false;
+      }
+    }
+    
     if (this.cinematicMode) {
       this.cinematicTarget.update(dt, this.arena, this);
       return;
@@ -202,20 +250,18 @@ class Game {
     this.combatTexts = this.combatTexts.filter(t => t.life > 0);
     this.combatTexts.forEach(t => t.update(dt));
 
-    // Update Slice Warnings
     this.sliceWarnings.forEach(w => w.update(dt, this));
     this.sliceWarnings = this.sliceWarnings.filter(w => !w.spawned);
 
-    // Update Slice Attacks
     this.sliceAttacks.forEach(s => s.update(dt));
     this.sliceAttacks.forEach(slice => {
-      if (this.cinematicMode) return; // Skip if cinematic started
+      if (this.cinematicMode) return;
       if (slice.isHitboxActive()) {
         this.fighters.forEach(target => {
           if (target !== slice.owner && target.alive && !slice.hitTargets.has(target)) {
             if (slice.checkHit(target)) {
               slice.hitTargets.add(target);
-              const dmgTaken = target.takeDamage(slice.damage, slice.owner, this);
+              const dmgTaken = target.takeDamage(slice.damage, slice.owner, this, true, 15);
               if (dmgTaken) {
                 this.log(`Slice hit ${target.name}.`);
                 Sound.sliceAttack(slice.owner.character.assetFolder);
@@ -242,7 +288,7 @@ class Game {
 
     this.hateSlashes = this.hateSlashes.filter(s => s.life > 0);
     this.hateSlashes.forEach(s => {
-      if (this.cinematicMode) return; // Skip if cinematic started
+      if (this.cinematicMode) return;
       s.update(dt);
       let hitSummon = false;
       this.summons.forEach(summon => {
@@ -258,7 +304,7 @@ class Game {
       let hitFighter = false;
       this.fighters.forEach(target => {
         if (!hitFighter && target.alive && target !== s.owner && Math.hypot(s.x - target.x, s.y - target.y) < target.radius + 10) {
-          const dmgTaken = target.takeDamage(s.damage, s.owner, this);
+          const dmgTaken = target.takeDamage(s.damage, s.owner, this, true, 10);
           if (dmgTaken) {
             this.log(`HATE Slash hit ${target.name}.`);
             this.log(`${target.name} was launched by the HATE Slash.`);
@@ -286,24 +332,33 @@ class Game {
 
     this.voidBeams.forEach(b => b.update(dt));
     this.voidBeams.forEach(beam => {
-      if (this.cinematicMode) return; // Skip if cinematic started
+      if (!beam.isHitboxActive() && !beam.riftSpawned) {
+        beam.riftSpawned = true;
+        this.spawnVoidRift(beam);
+      }
+      if (this.cinematicMode) return;
       if (beam.isHitboxActive()) {
         this.fighters.forEach(target => {
           if (target !== beam.owner && target.alive && !beam.hitTargets.has(target)) {
-            const dx = target.x - beam.x;
-            const dy = target.y - beam.y;
-            const dist = Math.hypot(dx, dy);
-            const targetAngle = Math.atan2(dy, dx);
-            let angleDiff = Math.abs(targetAngle - beam.angle);
-            if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-            if (angleDiff < 0.15 && dist < 1200) {
+            const hitRadius = target.radius + beam.baseWidth / 2;
+            let hit = false;
+            let knockAngle = beam.angle;
+            
+            const end1X = beam.x + Math.cos(beam.angle) * beam.length;
+            const end1Y = beam.y + Math.sin(beam.angle) * beam.length;
+            if (distToSegment(target.x, target.y, beam.x, beam.y, end1X, end1Y) < hitRadius) {
+              hit = true;
+              knockAngle = beam.angle;
+            }
+            
+            if (hit) {
               beam.hitTargets.add(target);
-              const dmgTaken = target.takeDamage(beam.damage, beam.owner, this);
+              const dmgTaken = target.takeDamage(beam.damage, beam.owner, this, true, 15);
               if (dmgTaken) {
                 this.log(`Void Beam hit ${target.name}.`);
                 Sound.beamHit(beam.owner.character.assetFolder);
-                target.vx = Math.cos(beam.angle) * beam.knockback;
-                target.vy = Math.sin(beam.angle) * beam.knockback;
+                target.vx = Math.cos(knockAngle) * beam.knockback;
+                target.vy = Math.sin(knockAngle) * beam.knockback;
                 target.speedBoost = 400;
                 this.damageNumbers.push(new DamageNumber(target.x, target.y, beam.damage, target.color));
                 this.combatTexts.push(new CombatText(target.x, target.y - 20, 'critical'));
@@ -321,6 +376,25 @@ class Game {
       }
     });
     this.voidBeams = this.voidBeams.filter(b => b.life > 0);
+
+    this.voidRifts.forEach(rift => {
+      rift.update(dt);
+      if (rift.damageTimer <= 0) {
+        rift.damageTimer = 0.5;
+        this.fighters.forEach(target => {
+          if (target !== rift.owner && target.alive) {
+            if (rift.checkHit(target)) {
+              const dmgTaken = target.takeDamage(rift.damage, rift.owner, this, false, 0);
+              if (dmgTaken) {
+                this.log(`Void Rift hit ${target.name} for ${rift.damage} damage.`);
+                this.damageNumbers.push(new DamageNumber(target.x, target.y, rift.damage, target.color));
+              }
+            }
+          }
+        });
+      }
+    });
+    this.voidRifts = this.voidRifts.filter(r => r.life > 0);
 
     this.fighters.forEach(f => {
       if (!f.alive && !f.defeatLogged) {
@@ -340,7 +414,7 @@ class Game {
   }
 
   checkSummonCollisions() {
-    if (this.cinematicMode) return; // Skip if cinematic started
+    if (this.cinematicMode) return;
     this.summons.forEach(s => {
       if (!s.alive) return;
       this.summons.forEach(s2 => {
@@ -404,7 +478,7 @@ class Game {
           enemy.vy -= dot * ny;
         }
         if (enemy.hitCooldown <= 0) {
-          const dmgTaken = enemy.takeDamage(s.damage, s.owner, this);
+          const dmgTaken = enemy.takeDamage(s.damage, s.owner, this, false, 0);
           if (dmgTaken) {
             this.log(`${s.type} hit ${enemy.name} for ${s.damage} damage.`);
             enemy.hitCooldown = 0.18;
@@ -437,7 +511,7 @@ class Game {
   }
 
   resolveCollision(a, b) {
-    if (this.cinematicMode) return; // Skip if cinematic started
+    if (this.cinematicMode) return;
     if (!a.alive || !b.alive) return;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -466,12 +540,14 @@ class Game {
       return;
     }
     if (dist < minDist) {
+      a.lastCombatTime = this.elapsed;
+      b.lastCombatTime = this.elapsed;
       const safeDist = Math.max(0.0001, dist);
       const nx = dx / safeDist;
       const ny = dy / safeDist;
       const overlap = minDist - safeDist;
       a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
-      b.x += nx * overlap / 2; b.y += ny * overlap / 2;
+      b.x += nx * overlap / 2; b.y += ny / 2;
       const aIsCharging = a.rushState.startsWith('charging');
       const bIsCharging = b.rushState.startsWith('charging');
       const aIsRushing = a.rushState.startsWith('rushing');
@@ -528,7 +604,7 @@ class Game {
         const baseRushDmg = 8;
         const speedMultiplier = speed / 1200;
         const rushDmg = Math.round(baseRushDmg + speedMultiplier * 10);
-        const dmgTaken = target.takeDamage(rushDmg, rusher, this);
+        const dmgTaken = target.takeDamage(rushDmg, rusher, this, true, 15);
         if (dmgTaken) {
           this.log(`${rusher.name} hit ${target.name} with Rush Attack.`);
           Sound.rushImpact();
@@ -543,7 +619,6 @@ class Game {
           this.spawnRushImpactEffect(target.x, target.y, rusher.color);
           rusher.endRush(this, true);
         } else {
-          // If blocked or Last Stand activated, still end the rush if it was active
           if (rusher.rushState.startsWith('rushing')) {
             rusher.endRush(this, true);
           }
@@ -563,7 +638,7 @@ class Game {
         if (a.hitCooldown <= 0 && b.hitCooldown <= 0) {
           if (aIsCharging && !bIsCharging) {
             const dmg = this.rollDamage(b.damage);
-            const dmgTaken = a.takeDamage(dmg, b, this);
+            const dmgTaken = a.takeDamage(dmg, b, this, false, 0);
             if (dmgTaken) {
               this.log(`${b.name} dealt ${dmg} damage to ${a.name}`);
               this.damageNumbers.push(new DamageNumber(a.x, a.y - 20, dmg, a.color));
@@ -574,7 +649,7 @@ class Game {
             Sound.hit();
           } else if (bIsCharging && !aIsCharging) {
             const dmg = this.rollDamage(a.damage);
-            const dmgTaken = b.takeDamage(dmg, a, this);
+            const dmgTaken = b.takeDamage(dmg, a, this, false, 0);
             if (dmgTaken) {
               this.log(`${a.name} dealt ${dmg} damage to ${b.name}`);
               this.damageNumbers.push(new DamageNumber(b.x, b.y - 20, dmg, b.color));
@@ -599,13 +674,13 @@ class Game {
                 this.log(`${b.name} gained HATE from a successful parry.`);
                 Sound.hateGain();
               }
-              const dmgTaken = a.takeDamage(dmgA, b, this);
+              const dmgTaken = a.takeDamage(dmgA, b, this, false, 0);
               if (dmgTaken) { this.log(`${b.name} dealt ${dmgA} damage to ${a.name}`); this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color)); }
               this.combatTexts.push(new CombatText(cx, cy - 10, 'parry'));
               this.spawnParryEffect(b.x, b.y);
               Sound.parry(b.character.assetFolder);
             } else {
-              const dmgTaken = b.takeDamage(dmgA, a, this);
+              const dmgTaken = b.takeDamage(dmgA, a, this, false, 0);
               if (dmgTaken) {
                 this.log(`${a.name} dealt ${dmgA} damage to ${b.name}`);
                 this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color));
@@ -622,13 +697,13 @@ class Game {
                 this.log(`${a.name} gained HATE from a successful parry.`);
                 Sound.hateGain();
               }
-              const dmgTaken = b.takeDamage(dmgB, a, this);
+              const dmgTaken = b.takeDamage(dmgB, a, this, false, 0);
               if (dmgTaken) { this.log(`${a.name} dealt ${dmgB} damage to ${b.name}`); this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color)); }
               this.combatTexts.push(new CombatText(cx, cy - 10, 'parry'));
               this.spawnParryEffect(a.x, a.y);
               Sound.parry(a.character.assetFolder);
             } else {
-              const dmgTaken = a.takeDamage(dmgB, b, this);
+              const dmgTaken = a.takeDamage(dmgB, b, this, false, 0);
               if (dmgTaken) {
                 this.log(`${b.name} dealt ${dmgB} damage to ${a.name}`);
                 this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color));
@@ -689,7 +764,13 @@ class Game {
       ctx.scale(zoom, zoom);
       ctx.translate(-this.cinematicTarget.x, -this.cinematicTarget.y);
     }
+    if (this.announcementActive) {
+      const shakeX = (Math.random() - 0.5) * 5;
+      const shakeY = (Math.random() - 0.5) * 5;
+      ctx.translate(shakeX, shakeY);
+    }
     this.arena.draw(ctx);
+    this.voidRifts.forEach(r => r.draw(ctx));
     this.particles.forEach(p => p.draw(ctx));
     this.hateSlashes.forEach(s => s.draw(ctx));
     this.voidBeams.forEach(b => b.draw(ctx));
@@ -708,12 +789,46 @@ class Game {
     this.fighters.forEach(f => f.draw(ctx));
     this.fighters.forEach(f => f.drawHpBar(ctx));
     this.damageNumbers.forEach(d => d.draw(ctx));
-    // Render Slice Warnings above fighters
     this.sliceWarnings.forEach(w => w.draw(ctx));
-    // Render Slice Attacks above fighters
     this.sliceAttacks.forEach(s => s.draw(ctx));
     this.combatTexts.forEach(t => t.draw(ctx));
     ctx.restore();
+    
+    if (this.announcementActive) {
+      this.drawAnnouncement(ctx);
+    }
+  }
+
+  drawAnnouncement(ctx) {
+    const alpha = Math.min(1, this.announcementTimer / 0.5);
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    
+    const mainShakeX = (Math.random() - 0.5) * 10;
+    const mainShakeY = (Math.random() - 0.5) * 10;
+    const ghostShakeX = (Math.random() - 0.5) * 14;
+    const ghostShakeY = (Math.random() - 0.5) * 14;
+    
+    const fontSize = 36;
+    ctx.font = `bold ${fontSize}px 'IDVERSOFont', Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const text = 'YOU SHOULD HAVE FINISHED HIM.';
+    
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.fillStyle = '#ca03fc';
+    ctx.fillText(text, centerX + 4 + ghostShakeX, centerY + 3 + ghostShakeY);
+    
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, centerX + mainShakeX, centerY + mainShakeY);
+    ctx.fillStyle = '#000000';
+    ctx.fillText(text, centerX + mainShakeX, centerY + mainShakeY);
+    
+    ctx.globalAlpha = 1;
   }
 
   loop(time) {
