@@ -1,6 +1,3 @@
-// ============================================================
-//  UI MANAGER
-// ============================================================
 let ROSTER = [];
 let selectionA = null;
 let selectionB = null;
@@ -143,9 +140,7 @@ function selectCharacter(player, charId) {
 function updatePreview() {
   updatePreviewSlot(document.getElementById('preview-a'), selectionA);
   updatePreviewSlot(document.getElementById('preview-b'), selectionB);
-  if (gameMode === 'triple') {
-    updatePreviewSlot(document.getElementById('preview-c'), selectionC);
-  }
+  if (gameMode === 'triple') { updatePreviewSlot(document.getElementById('preview-c'), selectionC); }
 }
 
 function updatePreviewSlot(el, charId) {
@@ -162,13 +157,8 @@ function updatePreviewSlot(el, charId) {
 function updateStartButton() {
   let ready = false;
   let text = 'Select Fighters';
-  if (gameMode === 'standard') {
-    ready = selectionA && selectionB;
-    text = ready ? 'Start Battle' : 'Select Both Fighters';
-  } else {
-    ready = selectionA && selectionB && selectionC;
-    text = ready ? 'Start Triple Threat' : 'Select All 3 Fighters';
-  }
+  if (gameMode === 'standard') { ready = selectionA && selectionB; text = ready ? 'Start Battle' : 'Select Both Fighters'; }
+  else { ready = selectionA && selectionB && selectionC; text = ready ? 'Start Triple Threat' : 'Select All 3 Fighters'; }
   if (ready) { startBtn.classList.add('enabled'); startBtn.disabled = false; startBtn.textContent = text; }
   else { startBtn.classList.remove('enabled'); startBtn.disabled = true; startBtn.textContent = text; }
 }
@@ -210,13 +200,8 @@ modeTripleBtn.addEventListener('click', () => {
 
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  if (name === 'menu') {
-    menuScreen.classList.add('active');
-    hideDebugMenu();
-  } else if (name === 'battle') {
-    battleScreen.classList.add('active');
-    initDebugMenu();
-  }
+  if (name === 'menu') { menuScreen.classList.add('active'); hideDebugMenu(); }
+  else if (name === 'battle') { battleScreen.classList.add('active'); initDebugMenu(); }
 }
 
 function runCountdown(onComplete) {
@@ -266,32 +251,17 @@ function handleGameOver(winner, stats) {
   }, 500);
 }
 
-function rematch() {
-  Sound.stopAll();
-  winnerOverlay.classList.remove('active');
-  startBattle();
-}
-
-function backToMenu() {
-  Sound.stopAll();
-  winnerOverlay.classList.remove('active');
-  showScreen('menu');
-}
+function rematch() { Sound.stopAll(); winnerOverlay.classList.remove('active'); startBattle(); }
+function backToMenu() { Sound.stopAll(); winnerOverlay.classList.remove('active'); showScreen('menu'); }
 
 startBtn.addEventListener('click', () => { if (startBtn.disabled === false) { Sound.init(); startBattle(); } });
 rematchBtn.addEventListener('click', rematch);
 charselectBtn.addEventListener('click', backToMenu);
 
-// ============================================================
-//  DEBUG MENU LOGIC
-// ============================================================
+// ===== DEBUG MENU =====
 function initDebugMenu() {
   debugPanel.classList.add('active');
-  if (!debugLoggedIn) {
-    renderDebugLogin();
-  } else {
-    renderDebugControls();
-  }
+  if (!debugLoggedIn) { renderDebugLogin(); } else { renderDebugControls(); }
 }
 
 function hideDebugMenu() {
@@ -312,12 +282,8 @@ function renderDebugLogin() {
   document.getElementById('debug-login-btn').addEventListener('click', () => {
     const user = document.getElementById('debug-user').value;
     const pass = document.getElementById('debug-pass').value;
-    if (user === 'Itami' && pass === 'ODIUM') {
-      debugLoggedIn = true;
-      renderDebugControls();
-    } else {
-      document.getElementById('debug-error').textContent = 'Access Denied';
-    }
+    if (user === 'Itami' && pass === 'ODIUM') { debugLoggedIn = true; renderDebugControls(); }
+    else { document.getElementById('debug-error').textContent = 'Access Denied'; }
   });
 }
 
@@ -332,9 +298,7 @@ function renderDebugControls() {
   game.fighters.forEach((f, i) => {
     healthHtml += `<div class="debug-row">${f.name}</div>`;
     healthHtml += '<div class="debug-btn-row">';
-    [100, 50, 25, 10, 1, 0].forEach(pct => {
-      healthHtml += `<button class="debug-btn" data-action="hp" data-fighter="${i}" data-val="${pct}">${pct}%</button>`;
-    });
+    [100, 50, 25, 10, 1, 0].forEach(pct => { healthHtml += `<button class="debug-btn" data-action="hp" data-fighter="${i}" data-val="${pct}">${pct}%</button>`; });
     healthHtml += '</div>';
   });
   healthHtml += '</div>';
@@ -376,9 +340,6 @@ function renderDebugControls() {
         <button class="debug-btn" data-action="ls_failure">Force Failure</button>
       </div>
     </div>
-  `;
-
-  content.innerHTML += `
     <div class="debug-section">
       <h4>Positions</h4>
       <div class="debug-btn-row">
@@ -386,9 +347,6 @@ function renderDebugControls() {
         <button class="debug-btn" data-action="pos_reset">Reset Spawns</button>
       </div>
     </div>
-  `;
-
-  content.innerHTML += `
     <div class="debug-section">
       <h4>Round Controls</h4>
       <div class="debug-btn-row">
@@ -398,9 +356,6 @@ function renderDebugControls() {
         <button class="debug-btn" data-action="round_resume">Resume</button>
       </div>
     </div>
-  `;
-
-  content.innerHTML += `
     <div class="debug-section">
       <h4>Audio</h4>
       <div class="debug-btn-row">
@@ -409,9 +364,6 @@ function renderDebugControls() {
         <button class="debug-btn" data-action="audio_replay_music">Replay Music</button>
       </div>
     </div>
-  `;
-
-  content.innerHTML += `
     <div class="debug-section">
       <h4>Battle Log</h4>
       <div class="debug-btn-row">
@@ -419,14 +371,10 @@ function renderDebugControls() {
         <button class="debug-btn" data-action="log_export">Export Log</button>
       </div>
     </div>
+    <div class="debug-section"><h4>Live State</h4><div id="debug-visuals"></div></div>
   `;
 
-  content.innerHTML += `<div class="debug-section"><h4>Live State</h4><div id="debug-visuals"></div></div>`;
-
-  document.querySelectorAll('.debug-btn').forEach(btn => {
-    btn.addEventListener('click', handleDebugAction);
-  });
-
+  document.querySelectorAll('.debug-btn').forEach(btn => { btn.addEventListener('click', handleDebugAction); });
   if (debugInterval) clearInterval(debugInterval);
   debugInterval = setInterval(updateDebugVisuals, 100);
 }
@@ -439,25 +387,15 @@ function handleDebugAction(e) {
     case 'hp':
       const f = game.fighters[parseInt(btn.dataset.fighter)];
       const pct = parseInt(btn.dataset.val);
-      if (pct === 0) {
-        f.takeDamage(f.hp, null, game); 
-      } else {
-        f.hp = Math.max(1, f.maxHp * (pct / 100));
-        f.alive = true;
-        f.defeatLogged = false;
-        f.lastStandState = 'idle';
-        f.lastStandActive = false;
-      }
+      if (pct === 0) { f.takeDamage(f.hp, null, game); }
+      else { f.hp = Math.max(1, f.maxHp * (pct / 100)); f.alive = true; f.defeatLogged = false; f.lastStandState = 'idle'; f.lastStandActive = false; }
       break;
     case 'meter':
       const meterType = btn.dataset.fighter;
       const val = parseInt(btn.dataset.val);
       const fighter = game.fighters.find(f => f.character.abilities[meterType]);
       if (fighter) {
-        if (meterType === 'hate') {
-          fighter.hate = val;
-          if (val >= 100) { fighter.hateMaxed = true; fighter.hateUnlocked = true; }
-        }
+        if (meterType === 'hate') { fighter.hate = val; if (val >= 100) { fighter.hateMaxed = true; fighter.hateUnlocked = true; } }
         if (meterType === 'dodge') fighter.dodgeMeter = val;
         if (meterType === 'determination') fighter.determination = val;
         if (meterType === 'void_meter') fighter.voidMeter = val;
@@ -478,49 +416,25 @@ function handleDebugAction(e) {
       if (itamiF) itamiF.takeDamage(itamiF.hp, null, game);
       break;
     case 'pos_center':
-      game.fighters.forEach(f => {
-        f.x = game.arena.x + game.arena.size / 2;
-        f.y = game.arena.y + game.arena.size / 2;
-      });
+      game.fighters.forEach(f => { f.x = game.arena.x + game.arena.size / 2; f.y = game.arena.y + game.arena.size / 2; });
       break;
     case 'pos_reset':
-      game.fighters.forEach(f => {
-        f.x = f.originalSpawnX;
-        f.y = f.originalSpawnY;
-      });
+      game.fighters.forEach(f => { f.x = f.originalSpawnX; f.y = f.originalSpawnY; });
       break;
-    case 'round_restart':
-      rematch();
-      break;
+    case 'round_restart': rematch(); break;
     case 'round_end':
       const alive = game.fighters.filter(f => f.alive);
-      if (alive.length > 1) {
-        for (let i = 1; i < alive.length; i++) {
-          alive[i].takeDamage(alive[i].hp, alive[0], game);
-        }
-      }
+      if (alive.length > 1) { for (let i = 1; i < alive.length; i++) { alive[i].takeDamage(alive[i].hp, alive[0], game); } }
       break;
-    case 'round_pause':
-      game.paused = true;
-      break;
-    case 'round_resume':
-      game.paused = false;
-      game.lastTime = 0;
-      requestAnimationFrame(t => game.loop(t));
-      break;
-    case 'audio_stop_sounds':
-      Sound.stopAll();
-      break;
-    case 'audio_stop_music':
-      Sound.stopMusic();
-      break;
+    case 'round_pause': game.paused = true; break;
+    case 'round_resume': game.paused = false; game.lastTime = 0; requestAnimationFrame(t => game.loop(t)); break;
+    case 'audio_stop_sounds': Sound.stopAll(); break;
+    case 'audio_stop_music': Sound.stopMusic(); break;
     case 'audio_replay_music':
       const itamiM = game.fighters.find(f => f.lastStandActive);
       if (itamiM) Sound.playMusic('last_stand_theme', itamiM.character.assetFolder);
       break;
-    case 'log_clear':
-      battleLogEl.innerHTML = '';
-      break;
+    case 'log_clear': battleLogEl.innerHTML = ''; break;
     case 'log_export':
       const logText = battleLogEl.innerText;
       const blob = new Blob([logText], {type: 'text/plain'});

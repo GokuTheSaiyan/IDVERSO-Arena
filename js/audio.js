@@ -1,6 +1,3 @@
-// ============================================================
-//  AUDIO MANAGER
-// ============================================================
 class AudioManager {
   constructor() {
     this.ctx = null;
@@ -47,9 +44,7 @@ class AudioManager {
       sound.volume = 0.5;
       sound.play().catch(() => {});
       this.activeSounds.push(sound);
-      sound.onended = () => {
-        this.activeSounds = this.activeSounds.filter(s => s !== sound);
-      };
+      sound.onended = () => { this.activeSounds = this.activeSounds.filter(s => s !== sound); };
       return true;
     }
     return false;
@@ -81,409 +76,65 @@ class AudioManager {
       this.currentMusic.loop = true;
       this.currentMusic.volume = 0.4;
       this.currentMusic.play().catch(() => {});
-    } else if (fallback) {
-      fallback();
-    }
+    } else if (fallback) { fallback(); }
   }
 
-  stopMusic() {
-    if (this.currentMusic) {
-      this.currentMusic.pause();
-      this.currentMusic = null;
-    }
-  }
+  stopMusic() { if (this.currentMusic) { this.currentMusic.pause(); this.currentMusic = null; } }
 
   stopAll() {
     this.stopMusic();
-    Object.keys(this.loopSounds).forEach(key => {
-      if (this.loopSounds[key]) {
-        this.loopSounds[key].pause();
-        this.loopSounds[key] = null;
-      }
-    });
-    if (this.rushChargeOsc) {
-      try { this.rushChargeOsc.stop(); } catch(e) {}
-      this.rushChargeOsc = null;
-    }
-    this.activeSounds.forEach(s => {
-      try { s.pause(); s.currentTime = 0; } catch(e) {}
-    });
+    Object.keys(this.loopSounds).forEach(key => { if (this.loopSounds[key]) { this.loopSounds[key].pause(); this.loopSounds[key] = null; } });
+    if (this.rushChargeOsc) { try { this.rushChargeOsc.stop(); } catch(e) {} this.rushChargeOsc = null; }
+    this.activeSounds.forEach(s => { try { s.pause(); s.currentTime = 0; } catch(e) {} });
     this.activeSounds = [];
   }
 
   hit() { this.play('hit', null, () => this.playTone(120, 0.04, 'sawtooth', 0.1)); }
-  slash(charFolder) {
-    this.play('attack', charFolder, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(1200, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(300, this.ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.1);
-    });
-  }
-  parry(charFolder) {
-    this.play('parry', charFolder, () => {
-      this.playTone(880, 0.06, 'sine', 0.15);
-      setTimeout(() => this.playTone(1320, 0.12, 'sine', 0.15), 60);
-    });
-  }
+  slash(charFolder) { this.play('attack', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1200, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(300, this.ctx.currentTime + 0.1); gain.gain.setValueAtTime(0.08, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.1); }); }
+  parry(charFolder) { this.play('parry', charFolder, () => { this.playTone(880, 0.06, 'sine', 0.15); setTimeout(() => this.playTone(1320, 0.12, 'sine', 0.15), 60); }); }
   shieldOn(charFolder) { this.play('shield_on', charFolder, () => this.playTone(400, 0.2, 'sine', 0.15)); }
   shieldOff(charFolder) { this.play('shield_off', charFolder, () => this.playTone(200, 0.2, 'sine', 0.15)); }
   detFull(charFolder) { this.play('determination_full', charFolder, () => this.playTone(800, 0.15, 'square', 0.15)); }
-  victory(charFolder) {
-    this.play('victory', charFolder, () => {
-      this.playTone(523, 0.12);
-      setTimeout(() => this.playTone(659, 0.12), 120);
-      setTimeout(() => this.playTone(784, 0.3), 240);
-    });
-  }
-
+  victory(charFolder) { this.play('victory', charFolder, () => { this.playTone(523, 0.12); setTimeout(() => this.playTone(659, 0.12), 120); setTimeout(() => this.playTone(784, 0.3), 240); }); }
   hateGain() { this.play('hate_gain', null, () => this.playTone(60, 0.05, 'sawtooth', 0.04)); }
-  hateFull() {
-    this.play('hate_full', null, () => {
-      this.playTone(80, 0.3, 'sawtooth', 0.15);
-      setTimeout(() => this.playTone(50, 0.4, 'sawtooth', 0.15), 100);
-    });
-  }
-  hateUnlock() {
-    this.play('hate_unlock', null, () => {
-      this.playTone(200, 0.05, 'sawtooth', 0.1);
-      setTimeout(() => this.playTone(150, 0.6, 'sawtooth', 0.15), 60);
-    });
-  }
-  hateSlashPrep() {
-    this.play('hate_slash_prep', null, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(100, this.ctx.currentTime);
-      osc.frequency.linearRampToValueAtTime(250, this.ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.2);
-    });
-  }
-  hateSlashLaunch() {
-    this.play('hate_slash_launch', null, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(300, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.25);
-      gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.25);
-    });
-  }
-  hateSlashHit() {
-    this.play('hate_slash_hit', null, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(150, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.2);
-    });
-  }
-
-  rushCharge() {
-    this.play('rush_charge', null, () => {
-      if (!this.ctx) return;
-      if (this.rushChargeOsc) { try { this.rushChargeOsc.stop(); } catch(e) {} }
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(50, this.ctx.currentTime);
-      osc.frequency.linearRampToValueAtTime(400, this.ctx.currentTime + 5.0);
-      gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.15, this.ctx.currentTime + 5.0);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 5.0);
-      this.rushChargeOsc = osc;
-    });
-  }
-  rushLock() {
-    this.play('rush_lock', null, () => {
-      this.playTone(600, 0.1, 'square', 0.15);
-      setTimeout(() => this.playTone(800, 0.15, 'square', 0.15), 80);
-    });
-  }
-  rushLaunch() {
-    if (this.rushChargeOsc) { try { this.rushChargeOsc.stop(); } catch(e) {} this.rushChargeOsc = null; }
-    this.play('rush_launch', null, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(800, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.3);
-      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.3);
-    });
-  }
-  rushImpact() {
-    this.play('rush_impact', null, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(80, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(20, this.ctx.currentTime + 0.3);
-      gain.gain.setValueAtTime(0.35, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.3);
-    });
-  }
-  rushCrash() {
-    this.play('rush_crash', null, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(120, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.4);
-      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.4);
-    });
-  }
-  rushStun() {
-    this.play('rush_stun', null, () => {
-      this.playTone(150, 0.5, 'sine', 0.1);
-      setTimeout(() => this.playTone(130, 0.5, 'sine', 0.08), 300);
-    });
-  }
-  rushParry() {
-    this.play('rush_parry', null, () => {
-      this.playTone(880, 0.06, 'sine', 0.15);
-      setTimeout(() => this.playTone(440, 0.2, 'sawtooth', 0.15), 60);
-      setTimeout(() => this.playTone(1100, 0.3, 'sine', 0.2), 200);
-    });
-  }
-
-  voidFull(charFolder) {
-    this.play('void_full', charFolder, () => {
-      this.playTone(300, 0.4, 'sine', 0.15);
-      setTimeout(() => this.playTone(400, 0.6, 'sine', 0.12), 150);
-    });
-  }
-  portalOpen(charFolder) {
-    this.play('portal_open', charFolder, () => {
-      this.playTone(200, 0.6, 'sawtooth', 0.12);
-      setTimeout(() => this.playTone(100, 0.8, 'sawtooth', 0.15), 100);
-    });
-  }
-  portalClose(charFolder) {
-    this.play('portal_close', charFolder, () => {
-      this.playTone(100, 0.4, 'sawtooth', 0.12);
-      setTimeout(() => this.playTone(50, 0.5, 'sawtooth', 0.1), 100);
-    });
-  }
-  scoutSpawn(charFolder) {
-    this.play('scout_spawn', charFolder, () => this.playTone(800, 0.1, 'square', 0.1));
-  }
-  heavySpawn(charFolder) {
-    this.play('heavy_spawn', charFolder, () => this.playTone(150, 0.2, 'square', 0.15));
-  }
-  scoutAbsorb(charFolder) {
-    this.play('scout_absorb', charFolder, () => this.playTone(600, 0.2, 'sine', 0.15));
-  }
-  heavyAbsorb(charFolder) {
-    this.play('heavy_absorb', charFolder, () => this.playTone(400, 0.3, 'sine', 0.15));
-  }
-  heal(charFolder) {
-    this.play('heal', charFolder, () => {
-      this.playTone(523, 0.1, 'sine', 0.15);
-      setTimeout(() => this.playTone(659, 0.2, 'sine', 0.15), 100);
-    });
-  }
-  scoutParry(charFolder) {
-    this.play('scout_parry', charFolder, () => this.playTone(900, 0.06, 'sine', 0.12));
-  }
-  heavyParry(charFolder) {
-    this.play('heavy_parry', charFolder, () => this.playTone(700, 0.1, 'sine', 0.15));
-  }
-  parryHeal(charFolder) {
-    this.play('parry_heal', charFolder, () => {
-      this.playTone(660, 0.15, 'sine', 0.15);
-      setTimeout(() => this.playTone(880, 0.2, 'sine', 0.15), 100);
-    });
-  }
-  protectionBreak(charFolder) {
-    this.play('protection_break', charFolder, () => {
-      this.playTone(200, 0.3, 'sawtooth', 0.2);
-      setTimeout(() => this.playTone(100, 0.4, 'sawtooth', 0.15), 100);
-    });
-  }
-
-  beamCharge(charFolder) {
-    this.play('beam_charge', charFolder, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(100, this.ctx.currentTime);
-      osc.frequency.linearRampToValueAtTime(400, this.ctx.currentTime + 3.0);
-      gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + 3.0);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 3.0);
-    });
-  }
-  beamFire(charFolder) {
-    this.play('beam_fire', charFolder, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(800, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.4);
-      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.4);
-    });
-  }
-  beamHit(charFolder) {
-    this.play('beam_hit', charFolder, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(150, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.3);
-      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.3);
-    });
-  }
-  doubleBeam(charFolder) {
-    this.play('double_beam', charFolder, () => {
-      if (!this.ctx) return;
-      const osc1 = this.ctx.createOscillator();
-      const gain1 = this.ctx.createGain();
-      osc1.type = 'sawtooth';
-      osc1.frequency.setValueAtTime(800, this.ctx.currentTime);
-      osc1.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.4);
-      gain1.gain.setValueAtTime(0.2, this.ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
-      osc1.connect(gain1); gain1.connect(this.ctx.destination);
-      osc1.start(); osc1.stop(this.ctx.currentTime + 0.4);
-      
-      const osc2 = this.ctx.createOscillator();
-      const gain2 = this.ctx.createGain();
-      osc2.type = 'sawtooth';
-      osc2.frequency.setValueAtTime(1000, this.ctx.currentTime);
-      osc2.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.4);
-      gain2.gain.setValueAtTime(0.15, this.ctx.currentTime);
-      gain2.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
-      osc2.connect(gain2); gain2.connect(this.ctx.destination);
-      osc2.start(); osc2.stop(this.ctx.currentTime + 0.4);
-    });
-  }
-  voidRift(charFolder) {
-    this.play('void_rift', charFolder, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(200, this.ctx.currentTime);
-      osc.frequency.linearRampToValueAtTime(100, this.ctx.currentTime + 0.6);
-      gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.6);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.6);
-    });
-  }
-
-  lastStandStart(charFolder) {
-    this.play('last_stand_start', charFolder, () => {
-      this.playTone(60, 1.5, 'sawtooth', 0.2);
-      setTimeout(() => this.playTone(40, 2.0, 'sawtooth', 0.2), 200);
-    });
-  }
-  lastStandExplosion(charFolder) {
-    this.play('last_stand_explosion', charFolder, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(200, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.8);
-      gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.8);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.8);
-    });
-  }
-  lastStandLoopStart(charFolder) {
-    if (!this.ctx) return;
-    const url = charFolder ? `audio/${charFolder}/last_stand_loop.wav` : `audio/global/last_stand_loop.wav`;
-    if (this.cache[url] && !this.loopSounds[url]) {
-      const sound = this.cache[url].cloneNode();
-      sound.loop = true;
-      sound.volume = 0.15;
-      sound.play().catch(() => {});
-      this.loopSounds[url] = sound;
-    }
-  }
-  lastStandLoopStop(charFolder) {
-    const url = charFolder ? `audio/${charFolder}/last_stand_loop.wav` : `audio/global/last_stand_loop.wav`;
-    if (this.loopSounds[url]) {
-      this.loopSounds[url].pause();
-      this.loopSounds[url] = null;
-    }
-  }
-
-  sliceWarning(charFolder) {
-    this.play('slice_warning', charFolder, () => {
-      this.playTone(880, 0.08, 'square', 0.12);
-      setTimeout(() => this.playTone(880, 0.08, 'square', 0.12), 150);
-      setTimeout(() => this.playTone(880, 0.08, 'square', 0.12), 300);
-    });
-  }
-  sliceAttack(charFolder) {
-    this.play('slice_attack', charFolder, () => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(1000, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
-      osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.2);
-    });
-  }
-
-  dodge(charFolder) {
-    this.play('dodge', charFolder, () => {
-      this.playTone(1000, 0.05, 'sine', 0.1);
-      setTimeout(() => this.playTone(1500, 0.05, 'sine', 0.1), 30);
-    });
-  }
-
+  hateFull() { this.play('hate_full', null, () => { this.playTone(80, 0.3, 'sawtooth', 0.15); setTimeout(() => this.playTone(50, 0.4, 'sawtooth', 0.15), 100); }); }
+  hateUnlock() { this.play('hate_unlock', null, () => { this.playTone(200, 0.05, 'sawtooth', 0.1); setTimeout(() => this.playTone(150, 0.6, 'sawtooth', 0.15), 60); }); }
+  hateSlashPrep() { this.play('hate_slash_prep', null, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, this.ctx.currentTime); osc.frequency.linearRampToValueAtTime(250, this.ctx.currentTime + 0.2); gain.gain.setValueAtTime(0.12, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.2); }); }
+  hateSlashLaunch() { this.play('hate_slash_launch', null, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(300, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.25); gain.gain.setValueAtTime(0.2, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.25); }); }
+  hateSlashHit() { this.play('hate_slash_hit', null, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(150, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.2); gain.gain.setValueAtTime(0.25, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.2); }); }
+  rushCharge() { this.play('rush_charge', null, () => { if (!this.ctx) return; if (this.rushChargeOsc) { try { this.rushChargeOsc.stop(); } catch(e) {} } const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(50, this.ctx.currentTime); osc.frequency.linearRampToValueAtTime(400, this.ctx.currentTime + 5.0); gain.gain.setValueAtTime(0.05, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.15, this.ctx.currentTime + 5.0); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 5.0); this.rushChargeOsc = osc; }); }
+  rushLock() { this.play('rush_lock', null, () => { this.playTone(600, 0.1, 'square', 0.15); setTimeout(() => this.playTone(800, 0.15, 'square', 0.15), 80); }); }
+  rushLaunch() { if (this.rushChargeOsc) { try { this.rushChargeOsc.stop(); } catch(e) {} this.rushChargeOsc = null; } this.play('rush_launch', null, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.3); gain.gain.setValueAtTime(0.25, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.3); }); }
+  rushImpact() { this.play('rush_impact', null, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(80, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(20, this.ctx.currentTime + 0.3); gain.gain.setValueAtTime(0.35, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.3); }); }
+  rushCrash() { this.play('rush_crash', null, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(120, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.4); gain.gain.setValueAtTime(0.3, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.4); }); }
+  rushStun() { this.play('rush_stun', null, () => { this.playTone(150, 0.5, 'sine', 0.1); setTimeout(() => this.playTone(130, 0.5, 'sine', 0.08), 300); }); }
+  rushParry() { this.play('rush_parry', null, () => { this.playTone(880, 0.06, 'sine', 0.15); setTimeout(() => this.playTone(440, 0.2, 'sawtooth', 0.15), 60); setTimeout(() => this.playTone(1100, 0.3, 'sine', 0.2), 200); }); }
+  voidFull(charFolder) { this.play('void_full', charFolder, () => { this.playTone(300, 0.4, 'sine', 0.15); setTimeout(() => this.playTone(400, 0.6, 'sine', 0.12), 150); }); }
+  portalOpen(charFolder) { this.play('portal_open', charFolder, () => { this.playTone(200, 0.6, 'sawtooth', 0.12); setTimeout(() => this.playTone(100, 0.8, 'sawtooth', 0.15), 100); }); }
+  portalClose(charFolder) { this.play('portal_close', charFolder, () => { this.playTone(100, 0.4, 'sawtooth', 0.12); setTimeout(() => this.playTone(50, 0.5, 'sawtooth', 0.1), 100); }); }
+  scoutSpawn(charFolder) { this.play('scout_spawn', charFolder, () => this.playTone(800, 0.1, 'square', 0.1)); }
+  heavySpawn(charFolder) { this.play('heavy_spawn', charFolder, () => this.playTone(150, 0.2, 'square', 0.15)); }
+  scoutAbsorb(charFolder) { this.play('scout_absorb', charFolder, () => this.playTone(600, 0.2, 'sine', 0.15)); }
+  heavyAbsorb(charFolder) { this.play('heavy_absorb', charFolder, () => this.playTone(400, 0.3, 'sine', 0.15)); }
+  heal(charFolder) { this.play('heal', charFolder, () => { this.playTone(523, 0.1, 'sine', 0.15); setTimeout(() => this.playTone(659, 0.2, 'sine', 0.15), 100); }); }
+  scoutParry(charFolder) { this.play('scout_parry', charFolder, () => this.playTone(900, 0.06, 'sine', 0.12)); }
+  heavyParry(charFolder) { this.play('heavy_parry', charFolder, () => this.playTone(700, 0.1, 'sine', 0.15)); }
+  parryHeal(charFolder) { this.play('parry_heal', charFolder, () => { this.playTone(660, 0.15, 'sine', 0.15); setTimeout(() => this.playTone(880, 0.2, 'sine', 0.15), 100); }); }
+  protectionBreak(charFolder) { this.play('protection_break', charFolder, () => { this.playTone(200, 0.3, 'sawtooth', 0.2); setTimeout(() => this.playTone(100, 0.4, 'sawtooth', 0.15), 100); }); }
+  beamCharge(charFolder) { this.play('beam_charge', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, this.ctx.currentTime); osc.frequency.linearRampToValueAtTime(400, this.ctx.currentTime + 3.0); gain.gain.setValueAtTime(0.1, this.ctx.currentTime); gain.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + 3.0); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 3.0); }); }
+  beamFire(charFolder) { this.play('beam_fire', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.4); gain.gain.setValueAtTime(0.25, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.4); }); }
+  beamHit(charFolder) { this.play('beam_hit', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(150, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.3); gain.gain.setValueAtTime(0.3, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.3); }); }
+  doubleBeam(charFolder) { this.play('double_beam', charFolder, () => { if (!this.ctx) return; const osc1 = this.ctx.createOscillator(); const gain1 = this.ctx.createGain(); osc1.type = 'sawtooth'; osc1.frequency.setValueAtTime(800, this.ctx.currentTime); osc1.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.4); gain1.gain.setValueAtTime(0.2, this.ctx.currentTime); gain1.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4); osc1.connect(gain1); gain1.connect(this.ctx.destination); osc1.start(); osc1.stop(this.ctx.currentTime + 0.4); const osc2 = this.ctx.createOscillator(); const gain2 = this.ctx.createGain(); osc2.type = 'sawtooth'; osc2.frequency.setValueAtTime(1000, this.ctx.currentTime); osc2.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.4); gain2.gain.setValueAtTime(0.15, this.ctx.currentTime); gain2.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4); osc2.connect(gain2); gain2.connect(this.ctx.destination); osc2.start(); osc2.stop(this.ctx.currentTime + 0.4); }); }
+  voidRift(charFolder) { this.play('void_rift', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(200, this.ctx.currentTime); osc.frequency.linearRampToValueAtTime(100, this.ctx.currentTime + 0.6); gain.gain.setValueAtTime(0.15, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.6); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.6); }); }
+  lastStandStart(charFolder) { this.play('last_stand_start', charFolder, () => { this.playTone(60, 1.5, 'sawtooth', 0.2); setTimeout(() => this.playTone(40, 2.0, 'sawtooth', 0.2), 200); }); }
+  lastStandExplosion(charFolder) { this.play('last_stand_explosion', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.8); gain.gain.setValueAtTime(0.4, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.8); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.8); }); }
+  lastStandLoopStart(charFolder) { if (!this.ctx) return; const url = charFolder ? `audio/${charFolder}/last_stand_loop.wav` : `audio/global/last_stand_loop.wav`; if (this.cache[url] && !this.loopSounds[url]) { const sound = this.cache[url].cloneNode(); sound.loop = true; sound.volume = 0.15; sound.play().catch(() => {}); this.loopSounds[url] = sound; } }
+  lastStandLoopStop(charFolder) { const url = charFolder ? `audio/${charFolder}/last_stand_loop.wav` : `audio/global/last_stand_loop.wav`; if (this.loopSounds[url]) { this.loopSounds[url].pause(); this.loopSounds[url] = null; } }
+  laststandGlitch(charFolder) { this.play('laststand_glitch', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1000, this.ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, this.ctx.currentTime + 0.1); gain.gain.setValueAtTime(0.1, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.1); }); }
+  sliceWarning(charFolder) { this.play('slice_warning', charFolder, () => { this.playTone(880, 0.08, 'square', 0.12); setTimeout(() => this.playTone(880, 0.08, 'square', 0.12), 150); setTimeout(() => this.playTone(880, 0.08, 'square', 0.12), 300); }); }
+  sliceAttack(charFolder) { this.play('slice_attack', charFolder, () => { if (!this.ctx) return; const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1000, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.2); gain.gain.setValueAtTime(0.2, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2); osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.2); }); }
+  dodge(charFolder) { this.play('dodge', charFolder, () => { this.playTone(1000, 0.05, 'sine', 0.1); setTimeout(() => this.playTone(1500, 0.05, 'sine', 0.1), 30); }); }
   countdown() { this.playTone(440, 0.15); }
   fight() { this.playTone(660, 0.1); setTimeout(() => this.playTone(880, 0.3), 100); }
 }
-
 const Sound = new AudioManager();

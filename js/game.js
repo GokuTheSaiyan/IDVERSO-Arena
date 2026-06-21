@@ -1,6 +1,3 @@
-// ============================================================
-//  FALLBACK ROSTER
-// ============================================================
 const FALLBACK_ROSTER = [
   { id: "fighterA", name: "Fighter A", hp: 100, damage: 5, speed: 220, color: "#ff5555", size: 36, abilities: {}, assetFolder: "FighterA" },
   { id: "fighterB", name: "Fighter B", hp: 100, damage: 5, speed: 220, color: "#5555ff", size: 36, abilities: {}, assetFolder: "FighterB" },
@@ -9,9 +6,6 @@ const FALLBACK_ROSTER = [
   { id: "sam", name: "Sam", hp: 100, damage: 4, speed: 265, color: "#2c233b", size: 36, abilities: { void_meter: true, void_beam: true }, assetFolder: "Sam" }
 ];
 
-// ============================================================
-//  CLASS: Arena
-// ============================================================
 class Arena {
   constructor(x, y, size) { this.x = x; this.y = y; this.size = size; }
   draw(ctx) {
@@ -34,9 +28,6 @@ class Arena {
   }
 }
 
-// ============================================================
-//  CLASS: Game
-// ============================================================
 class Game {
   constructor(canvas, charA, charB, scenario = 'default', mode = 'standard', charC = null) {
     this.canvas = canvas;
@@ -84,9 +75,23 @@ class Game {
     this.forceLastStandSuccess = false;
     this.forceLastStandFailure = false;
 
-    this.announcementActive = false;
-    this.announcementTimer = 0;
-    this.announcementMaxTimer = 2.5;
+    // Two-Part Last Stand Dialogue System
+    this.dialogueActive = false;
+    this.dialoguePhase = 'none'; // 'part1', 'full'
+    this.dialoguePart1 = '';
+    this.dialoguePart2 = '';
+    this.dialogueAlpha1 = 0;
+    this.dialogueAlpha2 = 0;
+    this.dialogueScale1 = 1;
+    this.dialogueScale2 = 1;
+    this.dialogueTimer = 0;
+    this.dialogueShake = 0;
+
+    // Last Stand Glitch System
+    this.glitchActive = false;
+    this.glitchTimer = 0;
+    this.glitchNextBurst = 3.0; // Seconds until first burst
+    this.glitchIntensity = 1.0;
 
     if (Object.keys(CombatText.sprites).length === 0) {
       const types = ['parry', 'blocked', 'hit', 'critical'];
@@ -99,14 +104,27 @@ class Game {
     }
   }
 
-  log(text) {
-    const t = this.elapsed.toFixed(1);
-    if (this.onLog) this.onLog(`[${t}s] ${text}`);
+  log(text) { const t = this.elapsed.toFixed(1); if (this.onLog) this.onLog(`[${t}s] ${text}`); }
+  
+  startLastStandDialogue(part1, part2) {
+    this.dialogueActive = true;
+    this.dialoguePhase = 'part1';
+    this.dialoguePart1 = part1;
+    this.dialoguePart2 = part2;
+    this.dialogueAlpha1 = 0;
+    this.dialogueAlpha2 = 0;
+    this.dialogueScale1 = 1;
+    this.dialogueScale2 = 1;
+    this.dialogueTimer = 0;
+    this.dialogueShake = 0;
   }
 
-  startAnnouncement() {
-    this.announcementActive = true;
-    this.announcementTimer = this.announcementMaxTimer;
+  revealLastStandPart2() {
+    this.dialoguePhase = 'full';
+    this.dialogueAlpha2 = 0;
+    this.dialogueScale2 = 1.5;
+    this.dialogueShake = 1.0;
+    this.dialogueTimer = 0;
   }
 
   start() {
@@ -115,35 +133,25 @@ class Game {
       const angle = Math.random() * Math.PI * 2;
       f.vx = Math.cos(angle) * f.baseSpeed;
       f.vy = Math.sin(angle) * f.baseSpeed;
-      if (f.protection > 0) {
-        this.log(`${f.name}'s Determination Protection is active.`);
-      }
+      if (f.protection > 0) { this.log(`${f.name}'s Determination Protection is active.`); }
     });
     this.lastTime = 0;
     requestAnimationFrame(t => this.loop(t));
   }
 
-  rollDamage(base) {
-    const r = Math.random();
-    if (r < 0.15) return base - 1;
-    if (r > 0.85) return base + 1;
-    return base;
-  }
+  rollDamage(base) { const r = Math.random(); if (r < 0.15) return base - 1; if (r > 0.85) return base + 1; return base; }
 
   spawnHateSlash(owner, target, hateAmount) {
     this.hateSlashes.push(new HateSlash(owner.x, owner.y, target.x, target.y, owner, hateAmount));
     owner.hateSlashCooldown = 3.0;
     Sound.hateSlashLaunch();
-    if (!(target instanceof Summon)) {
-      this.log(`${owner.name} launched a HATE Slash.`);
-    }
+    if (!(target instanceof Summon)) { this.log(`${owner.name} launched a HATE Slash.`); }
   }
 
   spawnVoidBeam(owner, angle) {
     const offset = 25;
     const perpX = Math.cos(angle + Math.PI / 2);
     const perpY = Math.sin(angle + Math.PI / 2);
-    
     if (owner.voidBeamType === 'double') {
       const beam1 = new VoidBeam(owner.x + perpX * offset, owner.y + perpY * offset, angle, owner, this.arena);
       const beam2 = new VoidBeam(owner.x - perpX * offset, owner.y - perpY * offset, angle, owner, this.arena);
@@ -152,7 +160,6 @@ class Game {
       const beam = new VoidBeam(owner.x, owner.y, angle, owner, this.arena);
       this.voidBeams.push(beam);
     }
-    
     for(let i=0; i<20; i++) {
       const spread = (Math.random() - 0.5) * 0.6;
       const a = angle + spread;
@@ -167,9 +174,7 @@ class Game {
     Sound.voidRift(beam.owner.character.assetFolder);
   }
 
-  spawnSlice(owner, x, y, angle) {
-    this.sliceAttacks.push(new SliceAttack(x, y, angle, this.arena.size, owner));
-  }
+  spawnSlice(owner, x, y, angle) { this.sliceAttacks.push(new SliceAttack(x, y, angle, this.arena.size, owner)); }
 
   spawnDodgeEffect(x, y) {
     for (let i = 0; i < 8; i++) {
@@ -207,23 +212,64 @@ class Game {
   update(dt) {
     this.elapsed += dt;
     
-    if (this.announcementActive) {
-      this.announcementTimer -= dt;
-      if (this.announcementTimer <= 0) {
-        this.announcementActive = false;
+    // Dialogue Update Logic
+    if (this.dialogueActive) {
+      this.dialogueTimer += dt;
+      if (this.dialogueShake > 0) {
+        this.dialogueShake -= dt * 2;
+        if (this.dialogueShake < 0) this.dialogueShake = 0;
+      }
+      
+      if (this.dialoguePhase === 'part1') {
+        this.dialogueAlpha1 = Math.min(1, this.dialogueAlpha1 + dt * 0.7); 
+        this.dialogueScale1 = 1.0;
+      } else if (this.dialoguePhase === 'full') {
+        this.dialogueAlpha2 = Math.min(1, this.dialogueAlpha2 + dt * 5); 
+        this.dialogueScale2 = Math.max(1.0, this.dialogueScale2 - dt * 2.5);
+        if (this.dialogueTimer > 3.5) {
+          this.dialogueAlpha1 -= dt * 0.8;
+          this.dialogueAlpha2 -= dt * 0.8;
+          if (this.dialogueAlpha1 <= 0) {
+            this.dialogueActive = false;
+            this.dialoguePhase = 'none';
+          }
+        }
+      }
+    }
+
+    // Last Stand Glitch System
+    if (this.glitchActive) {
+      // Increase intensity over time
+      this.glitchIntensity = Math.min(3.0, this.glitchIntensity + dt * 0.1);
+      
+      // Handle burst
+      if (this.glitchTimer > 0) {
+        this.glitchTimer -= dt;
+        if (this.glitchTimer <= 0) {
+          this.glitchActive = false;
+          this.glitchTimer = 0;
+        }
+      } else {
+        // Check for next burst
+        this.glitchNextBurst -= dt;
+        if (this.glitchNextBurst <= 0) {
+          this.glitchTimer = 0.15 + Math.random() * 0.1; // Burst duration
+          this.glitchActive = true;
+          Sound.laststandGlitch(this.fighterA.character.assetFolder);
+          // Schedule next burst with randomness, intensity increases frequency
+          const baseWait = 4.0 - (this.glitchIntensity * 0.8);
+          this.glitchNextBurst = Math.max(1.5, baseWait + (Math.random() - 0.5) * 2.0);
+        }
       }
     }
     
-    if (this.cinematicMode) {
-      this.cinematicTarget.update(dt, this.arena, this);
-      return;
-    }
+    if (this.cinematicMode) { this.cinematicTarget.update(dt, this.arena, this); return; }
+    
     this.fighters.forEach(f => f.update(dt, this.arena, this));
     for (let i = 0; i < this.fighters.length; i++) {
-      for (let j = i + 1; j < this.fighters.length; j++) {
-        this.resolveCollision(this.fighters[i], this.fighters[j]);
-      }
+      for (let j = i + 1; j < this.fighters.length; j++) { this.resolveCollision(this.fighters[i], this.fighters[j]); }
     }
+    
     this.fighters.forEach(f => {
       if (f.voidPortalActive) {
         this.summonSpawnTimer -= dt;
@@ -240,9 +286,11 @@ class Game {
         }
       }
     });
+    
     this.summons.forEach(s => s.update(dt, this.arena));
     this.summons = this.summons.filter(s => s.alive);
     this.checkSummonCollisions();
+    
     this.particles = this.particles.filter(p => p.life > 0);
     this.particles.forEach(p => p.update(dt));
     this.damageNumbers = this.damageNumbers.filter(d => d.life > 0);
@@ -266,9 +314,7 @@ class Game {
                 this.log(`Slice hit ${target.name}.`);
                 Sound.sliceAttack(slice.owner.character.assetFolder);
                 const kb = slice.getKnockback(target);
-                target.vx = kb.vx;
-                target.vy = kb.vy;
-                target.speedBoost = 300;
+                target.vx = kb.vx; target.vy = kb.vy; target.speedBoost = 300;
                 this.damageNumbers.push(new DamageNumber(target.x, target.y, slice.damage, target.color));
                 this.combatTexts.push(new CombatText(target.x, target.y - 20, 'hit'));
                 for (let i=0; i<10; i++) {
@@ -276,9 +322,7 @@ class Game {
                   const speed = 100 + Math.random() * 150;
                   this.particles.push(new Particle(target.x, target.y, Math.cos(a)*speed, Math.sin(a)*speed, '#000000', 0.3, 4 + Math.random() * 3));
                 }
-              } else {
-                this.combatTexts.push(new CombatText(target.x, target.y - 20, 'blocked'));
-              }
+              } else { this.combatTexts.push(new CombatText(target.x, target.y - 20, 'blocked')); }
             }
           }
         });
@@ -325,17 +369,12 @@ class Game {
         }
       });
       if (hitFighter) return;
-      if (s.x < this.arena.x - 50 || s.x > this.arena.x + this.arena.size + 50 || s.y < this.arena.y - 50 || s.y > this.arena.y + this.arena.size + 50) {
-        s.life = 0;
-      }
+      if (s.x < this.arena.x - 50 || s.x > this.arena.x + this.arena.size + 50 || s.y < this.arena.y - 50 || s.y > this.arena.y + this.arena.size + 50) { s.life = 0; }
     });
 
     this.voidBeams.forEach(b => b.update(dt));
     this.voidBeams.forEach(beam => {
-      if (!beam.isHitboxActive() && !beam.riftSpawned) {
-        beam.riftSpawned = true;
-        this.spawnVoidRift(beam);
-      }
+      if (!beam.isHitboxActive() && !beam.riftSpawned) { beam.riftSpawned = true; this.spawnVoidRift(beam); }
       if (this.cinematicMode) return;
       if (beam.isHitboxActive()) {
         this.fighters.forEach(target => {
@@ -343,14 +382,9 @@ class Game {
             const hitRadius = target.radius + beam.baseWidth / 2;
             let hit = false;
             let knockAngle = beam.angle;
-            
             const end1X = beam.x + Math.cos(beam.angle) * beam.length;
             const end1Y = beam.y + Math.sin(beam.angle) * beam.length;
-            if (distToSegment(target.x, target.y, beam.x, beam.y, end1X, end1Y) < hitRadius) {
-              hit = true;
-              knockAngle = beam.angle;
-            }
-            
+            if (distToSegment(target.x, target.y, beam.x, beam.y, end1X, end1Y) < hitRadius) { hit = true; knockAngle = beam.angle; }
             if (hit) {
               beam.hitTargets.add(target);
               const dmgTaken = target.takeDamage(beam.damage, beam.owner, this, true, 15);
@@ -367,9 +401,7 @@ class Game {
                   const speed = 100 + Math.random() * 150;
                   this.particles.push(new Particle(target.x, target.y, Math.cos(a)*speed, Math.sin(a)*speed, '#000000', 0.4, 4 + Math.random() * 3));
                 }
-              } else {
-                this.combatTexts.push(new CombatText(target.x, target.y - 20, 'blocked'));
-              }
+              } else { this.combatTexts.push(new CombatText(target.x, target.y - 20, 'blocked')); }
             }
           }
         });
@@ -397,10 +429,7 @@ class Game {
     this.voidRifts = this.voidRifts.filter(r => r.life > 0);
 
     this.fighters.forEach(f => {
-      if (!f.alive && !f.defeatLogged) {
-        f.defeatLogged = true;
-        this.log(`${f.name} defeated.`);
-      }
+      if (!f.alive && !f.defeatLogged) { f.defeatLogged = true; this.log(`${f.name} defeated.`); }
     });
 
     const alive = this.fighters.filter(f => f.alive);
@@ -419,21 +448,14 @@ class Game {
       if (!s.alive) return;
       this.summons.forEach(s2 => {
         if (s !== s2 && s2.alive) {
-          const dx = s2.x - s.x;
-          const dy = s2.y - s.y;
-          const dist = Math.hypot(dx, dy);
-          const minDist = s.radius + s2.radius;
+          const dx = s2.x - s.x; const dy = s2.y - s.y; const dist = Math.hypot(dx, dy); const minDist = s.radius + s2.radius;
           if (dist < minDist) {
             const safeDist = Math.max(0.0001, dist);
-            const nx = dx / safeDist;
-            const ny = dy / safeDist;
+            const nx = dx / safeDist; const ny = dy / safeDist;
             const overlap = minDist - safeDist;
-            s.x -= nx * overlap / 2;
-            s.y -= ny * overlap / 2;
-            s2.x += nx * overlap / 2;
-            s2.y += ny * overlap / 2;
-            s.vx = -s.vx;
-            s.vy = -s.vy;
+            s.x -= nx * overlap / 2; s.y -= ny * overlap / 2;
+            s2.x += nx * overlap / 2; s2.y += ny * overlap / 2;
+            s.vx = -s.vx; s.vy = -s.vy;
           }
         }
       });
@@ -441,17 +463,8 @@ class Game {
       if (enemy && enemy.alive && !enemy.voidPortalActive && Math.hypot(s.x - enemy.x, s.y - enemy.y) < s.radius + enemy.radius) {
         if (enemy.character.abilities && enemy.character.abilities.parry && Math.random() < 0.15) {
           s.alive = false;
-          if (s.type === 'scout') {
-            enemy.hate += 5;
-            enemy.hp = Math.min(enemy.maxHp, enemy.hp + 8);
-            Sound.scoutParry(enemy.character.assetFolder);
-            this.log(`${enemy.name} parried a Scout and recovered health.`);
-          } else {
-            enemy.hate += 10;
-            enemy.hp = Math.min(enemy.maxHp, enemy.hp + 15);
-            Sound.heavyParry(enemy.character.assetFolder);
-            this.log(`${enemy.name} parried a Heavy and recovered health.`);
-          }
+          if (s.type === 'scout') { enemy.hate += 5; enemy.hp = Math.min(enemy.maxHp, enemy.hp + 8); Sound.scoutParry(enemy.character.assetFolder); this.log(`${enemy.name} parried a Scout and recovered health.`); }
+          else { enemy.hate += 10; enemy.hp = Math.min(enemy.maxHp, enemy.hp + 15); Sound.heavyParry(enemy.character.assetFolder); this.log(`${enemy.name} parried a Heavy and recovered health.`); }
           if (enemy.hate > 100) enemy.hate = 100;
           Sound.parryHeal(enemy.character.assetFolder);
           this.spawnParryEffect(s.x, s.y);
@@ -459,24 +472,14 @@ class Game {
           this.combatTexts.push(new CombatText(s.x, s.y - 20, 'parry'));
           return;
         }
-        const dx = enemy.x - s.x;
-        const dy = enemy.y - s.y;
-        const dist = Math.max(0.1, Math.hypot(dx, dy));
+        const dx = enemy.x - s.x; const dy = enemy.y - s.y; const dist = Math.max(0.1, Math.hypot(dx, dy));
         const nx = dx / dist, ny = dy / dist;
         const overlap = (s.radius + enemy.radius) - dist;
-        s.x -= nx * overlap * 0.5;
-        s.y -= ny * overlap * 0.5;
-        enemy.x += nx * overlap * 0.5;
-        enemy.y += ny * overlap * 0.5;
-        const dvx = enemy.vx - s.vx;
-        const dvy = enemy.vy - s.vy;
+        s.x -= nx * overlap * 0.5; s.y -= ny * overlap * 0.5;
+        enemy.x += nx * overlap * 0.5; enemy.y += ny * overlap * 0.5;
+        const dvx = enemy.vx - s.vx; const dvy = enemy.vy - s.vy;
         const dot = dvx * nx + dvy * ny;
-        if (dot < 0) {
-          s.vx += dot * nx;
-          s.vy += dot * ny;
-          enemy.vx -= dot * nx;
-          enemy.vy -= dot * ny;
-        }
+        if (dot < 0) { s.vx += dot * nx; s.vy += dot * ny; enemy.vx -= dot * nx; enemy.vy -= dot * ny; }
         if (enemy.hitCooldown <= 0) {
           const dmgTaken = enemy.takeDamage(s.damage, s.owner, this, false, 0);
           if (dmgTaken) {
@@ -487,24 +490,14 @@ class Game {
             Sound.hit();
             s.takeDamage(1);
             if (!s.alive) this.log(`${s.type} was destroyed.`);
-          } else {
-            this.combatTexts.push(new CombatText(enemy.x, enemy.y - 20, 'blocked'));
-            enemy.hitCooldown = 0.18;
-          }
+          } else { this.combatTexts.push(new CombatText(enemy.x, enemy.y - 20, 'blocked')); enemy.hitCooldown = 0.18; }
         }
       }
       const owner = s.owner;
       if (owner.alive && !owner.voidPortalActive && Math.hypot(s.x - owner.x, s.y - owner.y) < s.radius + owner.radius) {
         s.alive = false;
-        if (s.type === 'scout') {
-          owner.hp = Math.min(owner.maxHp, owner.hp + 10);
-          Sound.scoutAbsorb(owner.character.assetFolder);
-          this.log(`${owner.name} absorbed a Scout and recovered health.`);
-        } else {
-          owner.hp = Math.min(owner.maxHp, owner.hp + 15);
-          Sound.heavyAbsorb(owner.character.assetFolder);
-          this.log(`${owner.name} absorbed a Heavy and recovered health.`);
-        }
+        if (s.type === 'scout') { owner.hp = Math.min(owner.maxHp, owner.hp + 10); Sound.scoutAbsorb(owner.character.assetFolder); this.log(`${owner.name} absorbed a Scout and recovered health.`); }
+        else { owner.hp = Math.min(owner.maxHp, owner.hp + 15); Sound.heavyAbsorb(owner.character.assetFolder); this.log(`${owner.name} absorbed a Heavy and recovered health.`); }
         Sound.heal(owner.character.assetFolder);
       }
     });
@@ -513,29 +506,18 @@ class Game {
   resolveCollision(a, b) {
     if (this.cinematicMode) return;
     if (!a.alive || !b.alive) return;
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const dist = Math.hypot(dx, dy);
-    const minDist = a.radius + b.radius;
+    const dx = b.x - a.x; const dy = b.y - a.y; const dist = Math.hypot(dx, dy); const minDist = a.radius + b.radius;
     if (a.voidPortalActive || b.voidPortalActive) {
       const sam = a.voidPortalActive ? a : b;
       const other = a.voidPortalActive ? b : a;
-      const sDx = other.x - sam.x;
-      const sDy = other.y - sam.y;
-      const sDist = Math.hypot(sDx, sDy);
-      const sMinDist = sam.radius + other.radius;
+      const sDx = other.x - sam.x; const sDy = other.y - sam.y; const sDist = Math.hypot(sDx, sDy); const sMinDist = sam.radius + other.radius;
       if (sDist < sMinDist) {
         const safeDist = Math.max(0.0001, sDist);
-        const nx = sDx / safeDist;
-        const ny = sDy / safeDist;
+        const nx = sDx / safeDist; const ny = sDy / safeDist;
         const overlap = sMinDist - safeDist;
-        other.x += nx * overlap;
-        other.y += ny * overlap;
+        other.x += nx * overlap; other.y += ny * overlap;
         const dot = other.vx * nx + other.vy * ny;
-        if (dot < 0) {
-          other.vx -= 2 * dot * nx;
-          other.vy -= 2 * dot * ny;
-        }
+        if (dot < 0) { other.vx -= 2 * dot * nx; other.vy -= 2 * dot * ny; }
       }
       return;
     }
@@ -543,8 +525,7 @@ class Game {
       a.lastCombatTime = this.elapsed;
       b.lastCombatTime = this.elapsed;
       const safeDist = Math.max(0.0001, dist);
-      const nx = dx / safeDist;
-      const ny = dy / safeDist;
+      const nx = dx / safeDist; const ny = dy / safeDist;
       const overlap = minDist - safeDist;
       a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
       b.x += nx * overlap / 2; b.y += ny / 2;
@@ -569,18 +550,14 @@ class Game {
             hitSummon = true;
           }
         });
-        if (hitSummon) {
-          rusher.endRush(this, true);
-          return;
-        }
+        if (hitSummon) { rusher.endRush(this, true); return; }
         if (target.character.abilities && target.character.abilities.parry && Math.random() < 0.15) {
           this.log(`${target.name} parried the Rush.`);
           Sound.rushParry();
           this.spawnParryEffect(target.x, target.y);
           this.combatTexts.push(new CombatText(target.x, target.y - 20, 'parry'));
           const len = Math.hypot(rusher.vx, rusher.vy);
-          target.vx = -rusher.vx / len;
-          target.vy = -rusher.vy / len;
+          target.vx = -rusher.vx / len; target.vy = -rusher.vy / len;
           target.speedBoost = 400;
           if (target.character.abilities.hate) {
             target.hate += 60;
@@ -588,16 +565,13 @@ class Game {
             this.log(`${target.name} gained a large amount of HATE.`);
             Sound.hateGain();
             if (target.hate >= 100 && !target.hateMaxed) {
-              target.hateMaxed = true;
-              target.hateUnlocked = true;
-              Sound.hateFull();
-              Sound.hateUnlock();
+              target.hateMaxed = true; target.hateUnlocked = true;
+              Sound.hateFull(); Sound.hateUnlock();
               this.log(`${target.name}'s HATE reached maximum.`);
               this.log(`${target.name} awakened HATE Slashes.`);
             }
           }
-          rusher.hitCooldown = 0.3;
-          target.hitCooldown = 0.3;
+          rusher.hitCooldown = 0.3; target.hitCooldown = 0.3;
           return;
         }
         const speed = Math.hypot(rusher.vx, rusher.vy);
@@ -612,20 +586,14 @@ class Game {
           target.vx = (rusher.vx / len) * 500;
           target.vy = (rusher.vy / len) * 500;
           target.speedBoost = 400;
-          rusher.hitCooldown = 0.5;
-          target.hitCooldown = 0.5;
+          rusher.hitCooldown = 0.5; target.hitCooldown = 0.5;
           this.damageNumbers.push(new DamageNumber(target.x, target.y, rushDmg, target.color));
           this.combatTexts.push(new CombatText(target.x, target.y - 20, 'critical'));
           this.spawnRushImpactEffect(target.x, target.y, rusher.color);
           rusher.endRush(this, true);
-        } else {
-          if (rusher.rushState.startsWith('rushing')) {
-            rusher.endRush(this, true);
-          }
-        }
+        } else { if (rusher.rushState.startsWith('rushing')) { rusher.endRush(this, true); } }
       } else {
-        const dvx = b.vx - a.vx;
-        const dvy = b.vy - a.vy;
+        const dvx = b.vx - a.vx; const dvy = b.vy - a.vy;
         const dot = dvx * nx + dvy * ny;
         if (dot < 0) {
           const impulse = dot * 1.2;
@@ -639,32 +607,22 @@ class Game {
           if (aIsCharging && !bIsCharging) {
             const dmg = this.rollDamage(b.damage);
             const dmgTaken = a.takeDamage(dmg, b, this, false, 0);
-            if (dmgTaken) {
-              this.log(`${b.name} dealt ${dmg} damage to ${a.name}`);
-              this.damageNumbers.push(new DamageNumber(a.x, a.y - 20, dmg, a.color));
-              this.combatTexts.push(new CombatText(a.x, a.y - 30, dmg > b.damage ? 'critical' : 'hit'));
-            }
+            if (dmgTaken) { this.log(`${b.name} dealt ${dmg} damage to ${a.name}`); this.damageNumbers.push(new DamageNumber(a.x, a.y - 20, dmg, a.color)); this.combatTexts.push(new CombatText(a.x, a.y - 30, dmg > b.damage ? 'critical' : 'hit')); }
             b.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
             Sound.hit();
           } else if (bIsCharging && !aIsCharging) {
             const dmg = this.rollDamage(a.damage);
             const dmgTaken = b.takeDamage(dmg, a, this, false, 0);
-            if (dmgTaken) {
-              this.log(`${a.name} dealt ${dmg} damage to ${b.name}`);
-              this.damageNumbers.push(new DamageNumber(b.x, b.y - 20, dmg, b.color));
-              this.combatTexts.push(new CombatText(b.x, b.y - 30, dmg > a.damage ? 'critical' : 'hit'));
-            }
+            if (dmgTaken) { this.log(`${a.name} dealt ${dmg} damage to ${b.name}`); this.damageNumbers.push(new DamageNumber(b.x, b.y - 20, dmg, b.color)); this.combatTexts.push(new CombatText(b.x, b.y - 30, dmg > a.damage ? 'critical' : 'hit')); }
             a.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
             Sound.hit();
-          } else if (aIsCharging && bIsCharging) {
-            a.hitCooldown = 0.18; b.hitCooldown = 0.18;
-          } else {
+          } else if (aIsCharging && bIsCharging) { a.hitCooldown = 0.18; b.hitCooldown = 0.18; }
+          else {
             const dmgA = this.rollDamage(a.damage);
             const dmgB = this.rollDamage(b.damage);
-            const cx = (a.x + b.x) / 2;
-            const cy = (a.y + b.y) / 2;
+            const cx = (a.x + b.x) / 2; const cy = (a.y + b.y) / 2;
             this.log(`${a.name} collided with ${b.name}`);
             if (b.character.abilities && b.character.abilities.parry && Math.random() < 0.15) {
               this.log(`${b.name} successfully parried the attack`);
@@ -681,13 +639,8 @@ class Game {
               Sound.parry(b.character.assetFolder);
             } else {
               const dmgTaken = b.takeDamage(dmgA, a, this, false, 0);
-              if (dmgTaken) {
-                this.log(`${a.name} dealt ${dmgA} damage to ${b.name}`);
-                this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color));
-                this.combatTexts.push(new CombatText(cx, cy - 10, dmgA > a.damage ? 'critical' : 'hit'));
-              } else {
-                this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
-              }
+              if (dmgTaken) { this.log(`${a.name} dealt ${dmgA} damage to ${b.name}`); this.damageNumbers.push(new DamageNumber(cx - 15, cy, dmgA, a.color)); this.combatTexts.push(new CombatText(cx, cy - 10, dmgA > a.damage ? 'critical' : 'hit')); }
+              else { this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked')); }
             }
             if (a.character.abilities && a.character.abilities.parry && Math.random() < 0.15) {
               this.log(`${a.name} successfully parried the attack`);
@@ -704,31 +657,16 @@ class Game {
               Sound.parry(a.character.assetFolder);
             } else {
               const dmgTaken = a.takeDamage(dmgB, b, this, false, 0);
-              if (dmgTaken) {
-                this.log(`${b.name} dealt ${dmgB} damage to ${a.name}`);
-                this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color));
-                this.combatTexts.push(new CombatText(cx, cy - 10, dmgB > b.damage ? 'critical' : 'hit'));
-              } else {
-                this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked'));
-              }
+              if (dmgTaken) { this.log(`${b.name} dealt ${dmgB} damage to ${a.name}`); this.damageNumbers.push(new DamageNumber(cx + 15, cy, dmgB, b.color)); this.combatTexts.push(new CombatText(cx, cy - 10, dmgB > b.damage ? 'critical' : 'hit')); }
+              else { this.combatTexts.push(new CombatText(cx, cy - 10, 'blocked')); }
             }
             a.hitsLanded++; b.hitsLanded++;
             a.hitCooldown = 0.18; b.hitCooldown = 0.18;
             this.collisions++;
             Sound.hit();
             let slashPlayed = false;
-            if (a.character.abilities && a.character.abilities.knife) {
-              a.triggerAttack(b.x, b.y);
-              const slashAngle = Math.atan2(b.y - a.y, b.x - a.x);
-              this.spawnSlashEffect(cx, cy, a.color, slashAngle);
-              if (!slashPlayed) { Sound.slash(a.character.assetFolder); slashPlayed = true; }
-            }
-            if (b.character.abilities && b.character.abilities.knife) {
-              b.triggerAttack(a.x, a.y);
-              const slashAngle = Math.atan2(a.y - b.y, a.x - b.x);
-              this.spawnSlashEffect(cx, cy, b.color, slashAngle);
-              if (!slashPlayed) { Sound.slash(b.character.assetFolder); slashPlayed = true; }
-            }
+            if (a.character.abilities && a.character.abilities.knife) { a.triggerAttack(b.x, b.y); const slashAngle = Math.atan2(b.y - a.y, b.x - a.x); this.spawnSlashEffect(cx, cy, a.color, slashAngle); if (!slashPlayed) { Sound.slash(a.character.assetFolder); slashPlayed = true; } }
+            if (b.character.abilities && b.character.abilities.knife) { b.triggerAttack(a.x, a.y); const slashAngle = Math.atan2(a.y - b.y, a.x - b.x); this.spawnSlashEffect(cx, cy, b.color, slashAngle); if (!slashPlayed) { Sound.slash(b.character.assetFolder); slashPlayed = true; } }
           }
         }
       }
@@ -764,9 +702,10 @@ class Game {
       ctx.scale(zoom, zoom);
       ctx.translate(-this.cinematicTarget.x, -this.cinematicTarget.y);
     }
-    if (this.announcementActive) {
-      const shakeX = (Math.random() - 0.5) * 5;
-      const shakeY = (Math.random() - 0.5) * 5;
+    if (this.dialogueActive) {
+      const shakeAmt = 4 + this.dialogueShake * 15;
+      const shakeX = (Math.random() - 0.5) * shakeAmt;
+      const shakeY = (Math.random() - 0.5) * shakeAmt;
       ctx.translate(shakeX, shakeY);
     }
     this.arena.draw(ctx);
@@ -786,7 +725,31 @@ class Game {
       }
     });
     this.summons.forEach(s => s.draw(ctx));
-    this.fighters.forEach(f => f.draw(ctx));
+    
+    // Draw Itami with glitch duplicates if Last Stand is active and glitch is bursting
+    this.fighters.forEach(f => {
+      f.draw(ctx);
+      // If Itami is in Last Stand and a glitch is active, draw duplicates
+      if (f.lastStandActive && f.name === 'Itami' && this.glitchActive) {
+        // Determine number of duplicates based on intensity
+        const dupes = Math.floor(this.glitchIntensity);
+        for (let i = 0; i < dupes; i++) {
+          ctx.globalAlpha = 0.4 - (i * 0.1);
+          // Offset position
+          const offX = (Math.random() - 0.5) * 20 * this.glitchIntensity;
+          const offY = (Math.random() - 0.5) * 20 * this.glitchIntensity;
+          // Color: semi-transparent black, purple, or magenta
+          const colors = ['rgba(0,0,0,0.4)', 'rgba(174,0,255,0.4)', 'rgba(202,3,252,0.4)'];
+          ctx.fillStyle = colors[i % colors.length];
+          // Draw duplicate circle
+          ctx.beginPath();
+          ctx.arc(f.x + offX, f.y + offY, f.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+    });
+    
     this.fighters.forEach(f => f.drawHpBar(ctx));
     this.damageNumbers.forEach(d => d.draw(ctx));
     this.sliceWarnings.forEach(w => w.draw(ctx));
@@ -794,41 +757,54 @@ class Game {
     this.combatTexts.forEach(t => t.draw(ctx));
     ctx.restore();
     
-    if (this.announcementActive) {
-      this.drawAnnouncement(ctx);
+    // Apply screen distortion jitter during glitch burst
+    if (this.glitchActive) {
+      const jitterX = (Math.random() - 0.5) * 6 * this.glitchIntensity;
+      const jitterY = (Math.random() - 0.5) * 6 * this.glitchIntensity;
+      ctx.translate(jitterX, jitterY);
     }
+    
+    if (this.dialogueActive) { this.drawDialogue(ctx); }
   }
 
-  drawAnnouncement(ctx) {
-    const alpha = Math.min(1, this.announcementTimer / 0.5);
+  drawDialogueText(ctx, text, y, alpha, scale, shake) {
+    if (alpha <= 0) return;
     const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
     
-    const mainShakeX = (Math.random() - 0.5) * 10;
-    const mainShakeY = (Math.random() - 0.5) * 10;
-    const ghostShakeX = (Math.random() - 0.5) * 14;
-    const ghostShakeY = (Math.random() - 0.5) * 14;
-    
-    const fontSize = 36;
-    ctx.font = `bold ${fontSize}px 'IDVERSOFont', Arial, sans-serif`;
+    // Rear text
+    const rearShakeX = (Math.random() - 0.5) * shake;
+    const rearShakeY = (Math.random() - 0.5) * shake;
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.font = `bold ${36 * scale}px 'IDVERSOFont', Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    
-    const text = 'YOU SHOULD HAVE FINISHED HIM.';
-    
-    ctx.globalAlpha = alpha * 0.5;
     ctx.fillStyle = '#ca03fc';
-    ctx.fillText(text, centerX + 4 + ghostShakeX, centerY + 3 + ghostShakeY);
+    ctx.fillText(text, centerX + 4 + rearShakeX, y + 3 + rearShakeY);
     
+    // Front text
+    const frontShakeX = (Math.random() - 0.5) * shake;
+    const frontShakeY = (Math.random() - 0.5) * shake;
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 5;
     ctx.lineJoin = 'round';
-    ctx.strokeText(text, centerX + mainShakeX, centerY + mainShakeY);
+    ctx.strokeText(text, centerX + frontShakeX, y + frontShakeY);
     ctx.fillStyle = '#000000';
-    ctx.fillText(text, centerX + mainShakeX, centerY + mainShakeY);
+    ctx.fillText(text, centerX + frontShakeX, y + frontShakeY);
     
     ctx.globalAlpha = 1;
+  }
+
+  drawDialogue(ctx) {
+    const centerY = this.canvas.height / 2;
+    const baseShake = 8;
+    const burstShake = this.dialogueShake * 20;
+    
+    const shake1 = baseShake + burstShake;
+    this.drawDialogueText(ctx, this.dialoguePart1, centerY - 30, this.dialogueAlpha1, this.dialogueScale1, shake1);
+    
+    const shake2 = baseShake + burstShake * 1.5;
+    this.drawDialogueText(ctx, this.dialoguePart2, centerY + 30, this.dialogueAlpha2, this.dialogueScale2, shake2);
   }
 
   loop(time) {
@@ -842,9 +818,6 @@ class Game {
   }
 }
 
-// ============================================================
-//  INITIALIZATION
-// ============================================================
 async function init() {
   let roster;
   try {

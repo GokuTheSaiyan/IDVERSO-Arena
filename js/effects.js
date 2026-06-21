@@ -1,6 +1,3 @@
-// ============================================================
-//  CLASS: Particle
-// ============================================================
 class Particle {
   constructor(x, y, vx, vy, color, life, size) {
     this.x = x; this.y = y;
@@ -25,9 +22,6 @@ class Particle {
   }
 }
 
-// ============================================================
-//  CLASS: DamageNumber
-// ============================================================
 class DamageNumber {
   constructor(x, y, value, color) {
     this.x = x; this.y = y;
@@ -53,9 +47,6 @@ class DamageNumber {
   }
 }
 
-// ============================================================
-//  CLASS: CombatText
-// ============================================================
 class CombatText {
   constructor(x, y, type) {
     this.x = x;
@@ -109,9 +100,6 @@ class CombatText {
 }
 CombatText.sprites = {};
 
-// ============================================================
-//  CLASS: HateSlash
-// ============================================================
 class HateSlash {
   constructor(x, y, targetX, targetY, owner, hateAmount) {
     this.x = x; this.y = y;
@@ -160,9 +148,6 @@ class HateSlash {
   }
 }
 
-// ============================================================
-//  CLASS: VoidBeam
-// ============================================================
 class VoidBeam {
   constructor(x, y, angle, owner, arena) {
     this.x = x; this.y = y;
@@ -219,9 +204,6 @@ class VoidBeam {
   }
 }
 
-// ============================================================
-//  CLASS: VoidRift
-// ============================================================
 class VoidRift {
   constructor(x, y, angle, owner, arena) {
     this.x = x; this.y = y;
@@ -286,9 +268,6 @@ class VoidRift {
   }
 }
 
-// ============================================================
-//  HELPER: distToSegment
-// ============================================================
 function distToSegment(px, py, ax, ay, bx, by) {
   const dx = bx - ax;
   const dy = by - ay;
@@ -301,9 +280,6 @@ function distToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - projX, py - projY);
 }
 
-// ============================================================
-//  CLASS: SliceWarning
-// ============================================================
 class SliceWarning {
   constructor(x, y, angle, owner, duration) {
     this.x = x;
@@ -348,9 +324,6 @@ class SliceWarning {
   }
 }
 
-// ============================================================
-//  CLASS: SliceAttack
-// ============================================================
 class SliceAttack {
   constructor(x, y, angle, arenaSize, owner) {
     this.x = x;
@@ -427,9 +400,6 @@ class SliceAttack {
   }
 }
 
-// ============================================================
-//  CLASS: Summon
-// ============================================================
 class Summon {
   constructor(x, y, type, owner, target) {
     this.x = x; this.y = y;
